@@ -1,0 +1,13 @@
+//
+// Created by nacho on 8/25/2025.
+//
+#include <stdio.h>
+#include <unistd.h>
+
+int main(int argc, char* argv[]) {
+    printf("¡Hola! Soy un JUGADOR con PID: %d\n", getpid());
+    printf("Recibí ancho: %s, alto: %s\n", argv[1], argv[2]);
+    sleep(1);  // Simular trabajo
+    printf("Jugador terminando...\n");
+    return 0;
+}
