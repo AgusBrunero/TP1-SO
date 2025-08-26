@@ -3,6 +3,11 @@
 //
 #include <stdio.h>
 #include <unistd.h>
+#include <sys/mman.h>
+#include <sys/shm.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <string.h>
 /*
 "ǁǁ"
 "Ͱ"
@@ -36,15 +41,7 @@
 #define PLAYER8 "\033[33m"  // Amarillo normal
 #define PLAYER9 "\033[35m"  // Magenta normal
 void printBoard(gameState_t * gameState) {
-    // Print top border
-    printf("╔");
-    for (int j = 0; j < gameState->width - 1; j++) {
-        printf("══╦");
-    }
-    printf("══╗\n");
-
     for (int i = 0; i < gameState->height; i++) {
-        printf("║");
         for (int j = 0; j < gameState->width; j++) {
             bool isPlayer = false;
             int playerIdx = -1;
@@ -55,8 +52,8 @@ void printBoard(gameState_t * gameState) {
                     break;
                 }
             }
-            const char* color = RESET;
             if (isPlayer) {
+                const char* color = RESET;
                 switch (playerIdx) {
                     case 0: color = PLAYER1; break;
                     case 1: color = PLAYER2; break;
@@ -69,38 +66,52 @@ void printBoard(gameState_t * gameState) {
                     case 8: color = PLAYER9; break;
                     default: color = RESET; break;
                 }
-                printf("%s Ñ %s", color, RESET);
+                printf("%s ඞ%s ", color, RESET); // 2-width: Ñ + space
             } else {
-                printf("   "); // Unoccupied cell: white/empty
+                int cellValue = gameState->board[i * gameState->width + j];
+                printf("%2d ", cellValue); // 2-width: num + space
             }
-            if (j < gameState->width - 1)
-                printf("║");
         }
-        printf("║\n");
-        if (i < gameState->height - 1) {
-            printf("╠");
-            for (int j = 0; j < gameState->width - 1; j++) {
-                printf("══╬");
-            }
-            printf("══╣\n");
-        }
+        printf("\n");
     }
-    // Print bottom border
-    printf("╚");
-    for (int j = 0; j < gameState->width - 1; j++) {
-        printf("══╩");
-    }
-    printf("══╝\n");
 }
 
 int main(int argc, char* argv[]) {
-    gameState_t * gameState = NULL;
-    sscanf(argv[1], "%p", (void**)&gameState);
+    if (argc < 2) {
+        fprintf(stderr, "Uso: %s <nombre_shm>\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+    const char* shm_name = argv[1];
+
+    // Primero abrimos el segmento y mapeamos sólo el struct base para leer width y height
+    int shm_fd = shm_open(shm_name, O_RDWR, 0666);
+    if (shm_fd == -1) {
+        perror("shm_open en vista");
+        exit(EXIT_FAILURE);
+    }
+    size_t structBaseSize = sizeof(gameState_t);
+    gameState_t * gameStateBase = mmap(NULL, structBaseSize, PROT_READ, MAP_SHARED, shm_fd, 0);
+    if (gameStateBase == MAP_FAILED) {
+        perror("mmap base en vista");
+        exit(EXIT_FAILURE);
+    }
+    int width = gameStateBase->width;
+    int height = gameStateBase->height;
+    munmap(gameStateBase, structBaseSize);
+
+    size_t boardByteSize = height * width * sizeof(int);
+    size_t structByteSize = sizeof(gameState_t) + boardByteSize;
+    gameState_t * gameState = mmap(NULL, structByteSize, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (gameState == MAP_FAILED) {
+        perror("mmap en vista");
+        exit(EXIT_FAILURE);
+    }
     printf("¡Hola! Soy la VISTA con PID: %d\n", getpid());
-    // printf("Recibí ancho[%d]: %s, alto: %s\n", 2, argv[0], argv[1]);
     sleep(1);  // Simular trabajo
     printBoard(gameState);
     printf("⠀⠀⠀⠀⠀⠀⠀⠈⠀⠀⠀⠀⠀⠀⠀⠈⠈⠉⠉⠈⠈⠈⠉⠉⠉⠉⠉⠉⠉⠉⠙⠻⣄⠉⠉⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀\n"
            "Vista terminando...\n");
+    munmap(gameState, structByteSize);
+    close(shm_fd);
     return 0;
 }

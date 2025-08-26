@@ -9,6 +9,12 @@
 #include <sys/wait.h>
 #include <sys/mman.h>
 #include "defs.h"
+
+#include <sys/mman.h>    // mmap, munmap, MAP_SHARED, PROT_READ, PROT_WRITE
+#include <sys/shm.h>     // shm_open, shm_unlink
+#include <fcntl.h>       // O_CREAT, O_RDWR, O_TRUNC
+#include <unistd.h>      // ftruncate, close
+
 #define MAXPLAYERS 9
 #define MAXPATHLEN 256
 #define ARGLEN 8
@@ -124,20 +130,9 @@ static player_t * playerFromBin(char * binPath, int intSuffix, int x, int y) {
  * Asume todos los parametros correctos y que hay al menos 1 player
  * Parametros de entrada: procName, width, height, delay, timeout, seed, viewBin, playerBin1, playerBin2, ...
 */
-gameState_t * gameStateFromArgs(int argc, char* argv[]) {
+gameState_t * gameStateFromArgs(gameState_t * gameState, int argc, char* argv[]) {
     int width = strtol(argv[1], NULL, 10);
     int height = strtol(argv[2], NULL, 10);
-
-
-    /*
-     * Esto es super incomodo, pero por enunciado board no puede ser un puntero, asi que toca
-     * mallocearlo con el tamaño del struct + el tamaño del board
-     * :(
-     */
-    size_t boardByteSize = height * width * sizeof(int);
-    size_t structByteSize = sizeof(gameState_t) + boardByteSize;
-  //  gameState_t *gameState = malloc(structByteSize);
-    gameState_t * gameState = mmap(NULL, structByteSize, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     gameState->width = width;
     gameState->height = height;
 
@@ -163,18 +158,34 @@ int main(int argc, char *argv[]) {
     int width = 10;
     int height = 10;
 
-    gameState_t* globalGameState = gameStateFromArgs(argc, argv);
-    char* viewBinary = argv[6];
+    int shm_fd = shm_open("/gamestate_shm", O_CREAT | O_RDWR, 0666);
+    if (shm_fd == -1) {
+        perror("shm_open failed");
+        exit(EXIT_FAILURE);
+    }
 
-    char widthStr[ARGLEN], heightStr[ARGLEN];
-    snprintf(widthStr, ARGLEN, "%d", width);
-    snprintf(heightStr, ARGLEN, "%d", height);
+    /*
+     * Esto es super incomodo, pero por enunciado board no puede ser un puntero, asi que toca
+     * mallocearlo con el tamaño del struct + el tamaño del board
+     * :(
+     */
+    size_t boardByteSize = height * width * sizeof(int);
+    size_t structByteSize = sizeof(gameState_t) + boardByteSize;
 
+    //ftruncate resizea el bloque de memoria compartida de shm_open
+    if (ftruncate(shm_fd, structByteSize) == -1) {
+        perror("ftruncate failed");
+        exit(EXIT_FAILURE);
+    }
 
-    char * sharedMemPtr[32];
-    snprintf(sharedMemPtr, "%p", (void*)globalGameState);
-    char * viewArgs[] = {sharedMemPtr, NULL};
+    gameState_t * gameState = mmap(NULL, structByteSize, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    gameState_t* globalGameState = gameStateFromArgs(gameState, argc, argv);
+
+    char* viewBinary = argv[5];
+
+    char * viewArgs[] = {viewBinary, "/gamestate_shm", NULL};
     pid_t view_pid = newProc(viewBinary, viewArgs);
+
     if (view_pid == -1) {
         printf("Error creando proceso vista\n");
         return EXIT_FAILURE;
@@ -200,7 +211,3 @@ int main(int argc, char *argv[]) {
     printf("Terminaron todos los hijos :)");
     return 0;
 }
-
-
-
-
