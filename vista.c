@@ -77,41 +77,33 @@ void printBoard(gameState_t * gameState) {
 }
 
 int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        fprintf(stderr, "Uso: %s <nombre_shm>\n", argv[0]);
+    if (argc < 3) {
+        fprintf(stderr, "Fallo en creacion de vista, argumentos: %s <nombre_shm>, %s <tamaño de bytes del gamestate>\n", argv[0], argv[1]);
         exit(EXIT_FAILURE);
     }
     const char* shm_name = argv[1];
+    const int shm_size = strtol(argv[2], NULL, 10);
 
     // Primero abrimos el segmento y mapeamos sólo el struct base para leer width y height
-    int shm_fd = shm_open(shm_name, O_RDWR, 0666);
+    int shm_fd = shm_open(shm_name, O_RDONLY, 0666);
     if (shm_fd == -1) {
-        perror("shm_open en vista");
+        perror("error en shm_open en vista");
         exit(EXIT_FAILURE);
     }
-    size_t structBaseSize = sizeof(gameState_t);
-    gameState_t * gameStateBase = mmap(NULL, structBaseSize, PROT_READ, MAP_SHARED, shm_fd, 0);
-    if (gameStateBase == MAP_FAILED) {
+    gameState_t * gameState = mmap(NULL, shm_size, PROT_READ, MAP_SHARED, shm_fd, 0);
+    if (gameState == MAP_FAILED) {
         perror("mmap base en vista");
         exit(EXIT_FAILURE);
     }
-    int width = gameStateBase->width;
-    int height = gameStateBase->height;
-    munmap(gameStateBase, structBaseSize);
 
-    size_t boardByteSize = height * width * sizeof(int);
-    size_t structByteSize = sizeof(gameState_t) + boardByteSize;
-    gameState_t * gameState = mmap(NULL, structByteSize, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-    if (gameState == MAP_FAILED) {
-        perror("mmap en vista");
-        exit(EXIT_FAILURE);
-    }
-    printf("¡Hola! Soy la VISTA con PID: %d\n", getpid());
-    sleep(1);  // Simular trabajo
+    int width = gameState->width;
+    int height = gameState->height;
+  //  gameState->board[width * height - 1] = -5; // Solo para probar que es readOnly escribir
+
+    //printf("¡Hola! Soy la VISTA con PID: %d\n", getpid());
     printBoard(gameState);
-    printf("⠀⠀⠀⠀⠀⠀⠀⠈⠀⠀⠀⠀⠀⠀⠀⠈⠈⠉⠉⠈⠈⠈⠉⠉⠉⠉⠉⠉⠉⠉⠙⠻⣄⠉⠉⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀\n"
-           "Vista terminando...\n");
-    munmap(gameState, structByteSize);
+
+    munmap(gameState, shm_size);
     close(shm_fd);
     return 0;
 }

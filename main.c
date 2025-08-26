@@ -66,7 +66,7 @@ static int timeout, delay, seed;
  * intenta iniciar el binario de path con los argumentos dados
  * retorna -1 en error, o el pid del proceso hijo
  */
-pid_t newProc(char * binary, char * argv[]) {
+pid_t newProc(const char * binary, char * argv[]) {
     pid_t pid = fork();
 
     if (pid == -1) {
@@ -85,14 +85,16 @@ pid_t newProc(char * binary, char * argv[]) {
 }
 
 /*
- * Crea un player_t inicializado con los parametros dados
+ * Crea un nuevo player_t inicializado con los parametros dados
  * binPath: path al binario del jugador
  * intSuffix: numero que se agrega al nombre del jugador para diferenciarlo
  * x, y: coordenadas iniciales del jugador
+ * gameState: puntero al gameState compartido
+ * shmSize: tamaño en bytes del gameState compartido
  * retorna un puntero a un player_t inicializado
  * en caso de error termina el programa
  */
-static player_t * playerFromBin(char * binPath, int intSuffix, int x, int y) {
+static player_t * playerFromBin(char * binPath, int intSuffix, int x, int y, char * gameStateDir, size_t gameStateByteSize) {
     player_t * player = malloc(sizeof(player_t));
     if (player == NULL || errno == ENOMEM) {
         printf("Malloc error\n");
@@ -104,16 +106,15 @@ static player_t * playerFromBin(char * binPath, int intSuffix, int x, int y) {
     player->validReqs = 0;
     player->x = x;
     player->y = y;
-    /*
-     * Parametros debug, dsp los reemplazamos por la shared mem y otros parametros utiles
-     */
-    char widthStr[16], heightStr[16];
-    snprintf(widthStr, sizeof(widthStr), "%d", 192);
-    snprintf(heightStr, sizeof(heightStr), "%d", 152);
+
+
     char* argv[4];
     argv[0] = binPath;
-    argv[1] = widthStr;
-    argv[2] = heightStr;
+    argv[1] = gameStateDir;
+    //bufer para bytesize del gamestate
+    char arg2[32];
+    snprintf(arg2, sizeof(arg2), "%lu", gameStateByteSize);
+    argv[2] = arg2;
     argv[3] = NULL;
     pid_t pid = newProc(binPath, argv);
     if (pid == -1) {
@@ -126,11 +127,11 @@ static player_t * playerFromBin(char * binPath, int intSuffix, int x, int y) {
 }
 
 /*
- * Retorna una gameState inicializado con todos los players inicializados y posicionados
+ * No retorna nada, pero popula un gameState * con los parametros dados
  * Asume todos los parametros correctos y que hay al menos 1 player
  * Parametros de entrada: procName, width, height, delay, timeout, seed, viewBin, playerBin1, playerBin2, ...
 */
-gameState_t * gameStateFromArgs(gameState_t * gameState, int argc, char* argv[]) {
+static void populateGameStateFromArgs(gameState_t * gameState, const char* gameStateDir, size_t gameStateByteSize, int argc, char* argv[]) {
     int width = strtol(argv[1], NULL, 10);
     int height = strtol(argv[2], NULL, 10);
     gameState->width = width;
@@ -148,17 +149,17 @@ gameState_t * gameStateFromArgs(gameState_t * gameState, int argc, char* argv[])
 
     for (int i = 0; i < gameState->playerCount; i++) {
         Point_t spawnPoint = getSpawnPoint(i, width, height);
-        gameState->playerArr[i] = *playerFromBin(argv[MIN_MASTER_ARGC - 1 + i], i + 1, spawnPoint.x, spawnPoint.y);
+        gameState->playerArr[i] = *playerFromBin(argv[MIN_MASTER_ARGC - 1 + i], i + 1, spawnPoint.x, spawnPoint.y, gameState, gameStateByteSize);
     }
-    return gameState;
 }
 
-
+const char * gameState_shm_name = "/gamestate_shm";
 int main(int argc, char *argv[]) {
-    int width = 10;
-    int height = 10;
+    const int width = strtol(argv[1], NULL, 10);
+    const int height = strtol(argv[2], NULL, 10);
+    const char* viewBinary = argv[5];
 
-    int shm_fd = shm_open("/gamestate_shm", O_CREAT | O_RDWR, 0666);
+    const int shm_fd = shm_open(gameState_shm_name, O_CREAT | O_RDWR, 0666);
     if (shm_fd == -1) {
         perror("shm_open failed");
         exit(EXIT_FAILURE);
@@ -169,8 +170,10 @@ int main(int argc, char *argv[]) {
      * mallocearlo con el tamaño del struct + el tamaño del board
      * :(
      */
-    size_t boardByteSize = height * width * sizeof(int);
-    size_t structByteSize = sizeof(gameState_t) + boardByteSize;
+    const size_t boardByteSize = height * width * sizeof(int);
+    const size_t structByteSize = sizeof(gameState_t) + boardByteSize;
+    char structByteSizeStr[16];
+    snprintf(structByteSizeStr, sizeof(structByteSizeStr), "%d", (int)structByteSize);
 
     //ftruncate resizea el bloque de memoria compartida de shm_open
     if (ftruncate(shm_fd, structByteSize) == -1) {
@@ -179,11 +182,13 @@ int main(int argc, char *argv[]) {
     }
 
     gameState_t * gameState = mmap(NULL, structByteSize, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-    gameState_t* globalGameState = gameStateFromArgs(gameState, argc, argv);
+    if (gameState == MAP_FAILED) {
+        perror("mmap failed");
+        exit(EXIT_FAILURE);
+    }
+    populateGameStateFromArgs(gameState, gameState_shm_name, structByteSize, argc, argv);
 
-    char* viewBinary = argv[5];
-
-    char * viewArgs[] = {viewBinary, "/gamestate_shm", NULL};
+    const char * viewArgs[] = {viewBinary, gameState_shm_name, structByteSizeStr, NULL};
     pid_t view_pid = newProc(viewBinary, viewArgs);
 
     if (view_pid == -1) {
