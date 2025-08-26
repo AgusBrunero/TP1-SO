@@ -5,4 +5,5 @@ set(CMAKE_C_STANDARD 99)
 
 add_executable(untitled main.c
         player.c
-        vista.c)
+        vista.c
+        defs.h)
