@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <bits/fcntl-linux.h>
+#include <fcntl.h>
 #include <sys/mman.h>
 
 
