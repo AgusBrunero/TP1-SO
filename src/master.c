@@ -212,6 +212,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    printf("Terminaron todos los hijos :)");
+    printf("Terminaron todos los hijos :)\n");
     return 0;
 }

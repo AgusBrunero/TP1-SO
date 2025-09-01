@@ -9,6 +9,7 @@ TESTS_BIN = $(BIN_DIR)/tests
 
 all: $(BIN_DIR)/master $(BIN_DIR)/player $(BIN_DIR)/view
 	chmod +x $(BIN_DIR)/master $(BIN_DIR)/player $(BIN_DIR)/view
+	chmod +x run
 
 $(BIN_DIR)/master: $(SRC_DIR)/master.c $(SRC_DIR)/defs.h
 	$(CC) $(CFLAGS) -o $@ $(SRC_DIR)/master.c -lrt
