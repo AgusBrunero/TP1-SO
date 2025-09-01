@@ -1,5 +1,4 @@
 #define _POSIX_C_SOURCE 200809L
-#define _GNU_SOURCE
 
 #include <errno.h>
 #include <signal.h>
@@ -94,7 +93,7 @@ pid_t newProc(const char * binary, char * argv[]) {
  * retorna un puntero a un player_t inicializado
  * en caso de error termina el programa
  */
-static player_t * playerFromBin(char * binPath, int intSuffix, int x, int y, char * gameStateDir, size_t gameStateByteSize) {
+static player_t * playerFromBin(char * binPath, int intSuffix, int x, int y, const char * shm_name, size_t gameStateByteSize) {
     player_t * player = malloc(sizeof(player_t));
     if (player == NULL || errno == ENOMEM) {
         printf("Malloc error\n");
@@ -107,15 +106,15 @@ static player_t * playerFromBin(char * binPath, int intSuffix, int x, int y, cha
     player->x = x;
     player->y = y;
 
+    char arg2[32];
+    snprintf(arg2, sizeof(arg2), "%lu", gameStateByteSize);
 
     char* argv[4];
     argv[0] = binPath;
-    argv[1] = gameStateDir;
-    //bufer para bytesize del gamestate
-    char arg2[32];
-    snprintf(arg2, sizeof(arg2), "%lu", gameStateByteSize);
+    argv[1] = (char *)shm_name;
     argv[2] = arg2;
     argv[3] = NULL;
+
     pid_t pid = newProc(binPath, argv);
     if (pid == -1) {
         printf("Error creando proceso jugador %s with binary: %s\n", player->name, binPath);
@@ -149,7 +148,7 @@ static void populateGameStateFromArgs(gameState_t * gameState, const char* gameS
 
     for (int i = 0; i < gameState->playerCount; i++) {
         Point_t spawnPoint = getSpawnPoint(i, width, height);
-        gameState->playerArr[i] = *playerFromBin(argv[MIN_MASTER_ARGC - 1 + i], i + 1, spawnPoint.x, spawnPoint.y, gameState, gameStateByteSize);
+        gameState->playerArr[i] = *playerFromBin(argv[MIN_MASTER_ARGC - 1 + i], i + 1, spawnPoint.x, spawnPoint.y, gameStateDir, gameStateByteSize);
     }
 }
 
@@ -157,7 +156,7 @@ const char * gameState_shm_name = "/gamestate_shm";
 int main(int argc, char *argv[]) {
     const int width = strtol(argv[1], NULL, 10);
     const int height = strtol(argv[2], NULL, 10);
-    const char* viewBinary = argv[5];
+    const char* viewBinary = argv[6];
 
     const int shm_fd = shm_open(gameState_shm_name, O_CREAT | O_RDWR, 0666);
     if (shm_fd == -1) {
