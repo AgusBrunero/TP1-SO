@@ -96,9 +96,9 @@ int main(int argc, char* argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    int width = gameState->width;
-    int height = gameState->height;
-  //  gameState->board[width * height - 1] = -5; // Solo para probar que es readOnly escribir
+    // int width = gameState->width;
+    // int height = gameState->height;
+    // gameState->board[width * height - 1] = -5; // Solo para probar que es readOnly escribir
 
     printf("¡Hola! Soy la VISTA con PID: %d\n", getpid());
     printBoard(gameState);

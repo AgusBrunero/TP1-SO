@@ -10,7 +10,6 @@ TESTS_BIN = $(BIN_DIR)/tests
 
 all: $(BIN_DIR)/master $(BIN_DIR)/player $(BIN_DIR)/view
 	chmod +x $(BIN_DIR)/master $(BIN_DIR)/player $(BIN_DIR)/view
-	chmod +x run
 	@echo "\n\033[33mPara correr el programa hacer:\n./run <FILAS> <COLUMNAS> <DELAY> <TURNOS> <SEED>\033[0m"
 
 $(BIN_DIR)/master: $(SRC_DIR)/master.c $(SRC_DIR)/defs.h

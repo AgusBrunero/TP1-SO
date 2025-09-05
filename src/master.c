@@ -66,7 +66,7 @@ static int timeout, delay, seed;
  * intenta iniciar el binario de path con los argumentos dados
  * retorna -1 en error, o el pid del proceso hijo
  */
-pid_t newProc(const char * binary, const char * argv[]) {
+pid_t newProc(const char * binary, char * const argv[]) {
     pid_t pid = fork();
 
     if (pid == -1) {
@@ -110,11 +110,12 @@ static player_t * playerFromBin(char * binPath, int intSuffix, int x, int y, con
     char arg2[32];
     snprintf(arg2, sizeof(arg2), "%lu", gameStateByteSize);
 
-    char* argv[4];
-    argv[0] = binPath;
-    argv[1] = (char *)shm_name;
-    argv[2] = arg2;
-    argv[3] = NULL;
+    char * const argv[4] = {
+        binPath,
+        (char *)shm_name,
+        arg2,
+        NULL
+    };
 
     pid_t pid = newProc(binPath, argv);
     if (pid == -1) {
@@ -194,7 +195,7 @@ int main(int argc, char *argv[]) {
     }
     close(shm_fd); // El descriptor ya no es necesario después de mmap
 
-    const char * viewArgs[] = {viewBinary, gameState_shm_name, structByteSizeStr, NULL};
+    char * const viewArgs[] = {(char *)viewBinary, (char *)gameState_shm_name, structByteSizeStr, NULL};
     pid_t view_pid = newProc(viewBinary, viewArgs);
 
     if (view_pid == -1) {
@@ -216,8 +217,8 @@ int main(int argc, char *argv[]) {
 
         sem_post(&gameState->sems.mutex);
         
-        sleep(delay); // Usar el delay configurado
-        gameState->finished = true; // TODO: Temporalmente para salir del loop
+        //sleep(delay); // Usar el delay configurado
+        gameState->finished = true; // TODO: Agregado temporalmente para salir del loop
     }
 
     // Cleanup semáforos antes de terminar
