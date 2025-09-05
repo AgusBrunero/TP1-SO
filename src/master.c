@@ -2,6 +2,7 @@
 
 #include <errno.h>
 #include <signal.h>
+#include <semaphore.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,7 +66,7 @@ static int timeout, delay, seed;
  * intenta iniciar el binario de path con los argumentos dados
  * retorna -1 en error, o el pid del proceso hijo
  */
-pid_t newProc(const char * binary, char * argv[]) {
+pid_t newProc(const char * binary, const char * argv[]) {
     pid_t pid = fork();
 
     if (pid == -1) {
@@ -140,6 +141,11 @@ static void populateGameStateFromArgs(gameState_t * gameState, const char* gameS
     timeout = strtol(argv[4], NULL, 10);
     seed = strtol(argv[5], NULL, 10);
 
+    sem_init(&gameState->sems.mutex, 1, 1);
+    sem_init(&gameState->sems.writer, 1, 1);
+    sem_init(&gameState->sems.readers_count_mutex, 1, 1);
+    gameState->sems.readers_count = 0;
+
     //resto los primeros 6 argumentos fijos
     //procName, w,h,d,t,seed,viewBin
     gameState->playerCount = argc - MIN_MASTER_ARGC + 1;
@@ -154,6 +160,7 @@ static void populateGameStateFromArgs(gameState_t * gameState, const char* gameS
 
 const char * gameState_shm_name = "/gamestate_shm";
 int main(int argc, char *argv[]) {
+    printf("Master PID: %d\n", getpid());
     const int width = strtol(argv[1], NULL, 10);
     const int height = strtol(argv[2], NULL, 10);
     const char* viewBinary = argv[6];
@@ -185,7 +192,7 @@ int main(int argc, char *argv[]) {
         perror("mmap failed");
         exit(EXIT_FAILURE);
     }
-    populateGameStateFromArgs(gameState, gameState_shm_name, structByteSize, argc, argv);
+    close(shm_fd); // El descriptor ya no es necesario después de mmap
 
     const char * viewArgs[] = {viewBinary, gameState_shm_name, structByteSizeStr, NULL};
     pid_t view_pid = newProc(viewBinary, viewArgs);
@@ -196,6 +203,27 @@ int main(int argc, char *argv[]) {
     }
     printf("Creado proceso vista con PID: %d\n", view_pid);
 
+    populateGameStateFromArgs(gameState, gameState_shm_name, structByteSize, argc, argv);
+
+    while (!gameState->finished) {
+        // TODO: recibir_movimiento();
+        
+        sem_wait(&gameState->sems.writer);
+        sem_wait(&gameState->sems.mutex);
+        sem_post(&gameState->sems.writer);
+
+        // TODO: ejecutar_movimientos();
+
+        sem_post(&gameState->sems.mutex);
+        
+        sleep(delay); // Usar el delay configurado
+        gameState->finished = true; // TODO: Temporalmente para salir del loop
+    }
+
+    // Cleanup semáforos antes de terminar
+    sem_destroy(&gameState->sems.mutex);
+    sem_destroy(&gameState->sems.writer);
+    sem_destroy(&gameState->sems.readers_count_mutex);
 
     //aca wait escribe el codigo con el que termino el proceso hijo
     int status;
@@ -213,5 +241,10 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Terminaron todos los hijos :)\n");
+
+    // Agregar limpieza del shared memory
+    munmap(gameState, structByteSize);
+    shm_unlink(gameState_shm_name);
+    printf("Terminó master con PID: %d\n", getpid());
     return 0;
 }

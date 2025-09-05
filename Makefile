@@ -1,5 +1,6 @@
 CC = gcc
 CFLAGS = -Wall -std=c99 -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE
+LDFLAGS = -pthread -lrt
 
 SRC_DIR = src
 BIN_DIR = bin
@@ -13,17 +14,17 @@ all: $(BIN_DIR)/master $(BIN_DIR)/player $(BIN_DIR)/view
 	@echo "\n\033[33mPara correr el programa hacer:\n./run <FILAS> <COLUMNAS> <DELAY> <TURNOS> <SEED>\033[0m"
 
 $(BIN_DIR)/master: $(SRC_DIR)/master.c $(SRC_DIR)/defs.h
-	$(CC) $(CFLAGS) -o $@ $(SRC_DIR)/master.c -lrt
+	$(CC) $(CFLAGS) -o $@ $(SRC_DIR)/master.c $(LDFLAGS)
 
 $(BIN_DIR)/player: $(SRC_DIR)/player.c $(SRC_DIR)/defs.h
-	$(CC) $(CFLAGS) -o $@ $(SRC_DIR)/player.c -lrt
+	$(CC) $(CFLAGS) -o $@ $(SRC_DIR)/player.c $(LDFLAGS)
 
 $(BIN_DIR)/view: $(SRC_DIR)/view.c $(SRC_DIR)/defs.h
-	$(CC) $(CFLAGS) -o $@ $(SRC_DIR)/view.c -lrt
+	$(CC) $(CFLAGS) -o $@ $(SRC_DIR)/view.c $(LDFLAGS)
 
 tests: $(TESTS_BIN)
 $(TESTS_BIN): $(TESTS_SRC)
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 	chmod +x $@
 
 clean:

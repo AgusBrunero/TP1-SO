@@ -6,6 +6,14 @@
 #define DEFS_H
 #include <signal.h>
 #include <stdbool.h>
+#include <semaphore.h>
+
+typedef struct semaphoresStruct {
+    sem_t mutex;
+    sem_t writer;
+    sem_t readers_count_mutex;
+    int readers_count;
+} semaphores_t;
 
 typedef struct playerStruct {
     char name[16]; // Nombre del jugador
@@ -18,6 +26,7 @@ typedef struct playerStruct {
 } player_t;
 
 typedef struct gameStateStruct {
+    semaphores_t sems;
     unsigned short width; // Ancho del tablero
     unsigned short height; // Alto del tablero
     unsigned int playerCount; // Cantidad de jugadores
