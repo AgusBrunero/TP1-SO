@@ -1,7 +1,3 @@
-//
-// Created by nacho on 8/25/2025.
-//
-
 #ifndef DEFS_H
 #define DEFS_H
 #include <signal.h>
@@ -32,6 +28,7 @@ typedef struct gameStateStruct {
     unsigned int playerCount; // Cantidad de jugadores
     player_t playerArr[9]; // Lista de jugadores
     bool finished; // Indica si el juego se ha terminado
+    int hasPendingMove[9]; // Arreglo para indicar movimientos pendientes por jugador
     int board[]; // Puntero al comienzo del tablero. fila-0, fila-1, ..., fila-n-1
 } gameState_t;
 

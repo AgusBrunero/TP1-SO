@@ -1,6 +1,3 @@
-//
-// Created by nacho on 8/25/2025.
-//
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -22,6 +19,8 @@ int main(int argc, char* argv[]) {
     printf("Recibí ancho: %s, alto: %s\n", argv[1], argv[2]);
     while (!gameState->finished) {
         sem_wait(&gameState->sems.writer);
+        int playerIndex = 0; // TODO: obtener índice real del jugador
+        gameState->hasPendingMove[playerIndex] = 1;
         sem_post(&gameState->sems.writer);
 
         sem_wait(&gameState->sems.readers_count_mutex);

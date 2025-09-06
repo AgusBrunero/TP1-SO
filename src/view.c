@@ -1,6 +1,3 @@
-//
-// Created by nacho on 8/25/2025.
-//
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/mman.h>

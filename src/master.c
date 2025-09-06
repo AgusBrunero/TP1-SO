@@ -157,6 +157,11 @@ static void populateGameStateFromArgs(gameState_t * gameState, const char* gameS
         Point_t spawnPoint = getSpawnPoint(i, width, height);
         gameState->playerArr[i] = *playerFromBin(argv[MIN_MASTER_ARGC - 1 + i], i + 1, spawnPoint.x, spawnPoint.y, gameStateDir, gameStateByteSize);
     }
+
+    // Inicializar arreglo de movimientos pendientes
+    for(int i = 0; i < MAXPLAYERS; i++) {
+        gameState->hasPendingMove[i] = 0;
+    }
 }
 
 const char * gameState_shm_name = "/gamestate_shm";
@@ -213,11 +218,18 @@ int main(int argc, char *argv[]) {
         sem_wait(&gameState->sems.mutex);
         sem_post(&gameState->sems.writer);
 
-        // TODO: ejecutar_movimientos();
+        // Verificar movimientos pendientes
+        for(int i = 0; i < gameState->playerCount; i++) {
+            if(gameState->hasPendingMove[i] == 1) {
+                // TODO: procesar movimiento del jugador i
+                printf("Jugador %d tiene movimiento pendiente\n", i+1);
+                gameState->hasPendingMove[i] = 0; // Resetear flag
+            }
+        }
 
         sem_post(&gameState->sems.mutex);
         
-        //sleep(delay); // Usar el delay configurado
+        sleep(delay); // Usar el delay configurado
         gameState->finished = true; // TODO: Agregado temporalmente para salir del loop
     }
 
