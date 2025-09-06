@@ -153,14 +153,15 @@ static void populateGameStateFromArgs(gameState_t * gameState, const char* gameS
     gameState->finished = false;
     randomizeBoard(gameState->board, width, height, seed);
 
-    for (int i = 0; i < gameState->playerCount; i++) {
-        Point_t spawnPoint = getSpawnPoint(i, width, height);
-        gameState->playerArr[i] = *playerFromBin(argv[MIN_MASTER_ARGC - 1 + i], i + 1, spawnPoint.x, spawnPoint.y, gameStateDir, gameStateByteSize);
-    }
-
     // Inicializar arreglo de movimientos pendientes
     for(int i = 0; i < MAXPLAYERS; i++) {
         gameState->hasPendingMove[i] = 0;
+    }
+    
+    // Crea los procesos de players
+    for (int i = 0; i < gameState->playerCount; i++) {
+        Point_t spawnPoint = getSpawnPoint(i, width, height);
+        gameState->playerArr[i] = *playerFromBin(argv[MIN_MASTER_ARGC - 1 + i], i + 1, spawnPoint.x, spawnPoint.y, gameStateDir, gameStateByteSize);
     }
 }
 
@@ -231,7 +232,7 @@ int main(int argc, char *argv[]) {
         
         printf("Paso un ciclo de master\n");
         sleep(delay); // Usar el delay configurado
-        //gameState->finished = true; // Agregado temporalmente para salir del loop
+        gameState->finished = true; // Agregado temporalmente para salir del loop
     }
 
     // Cleanup semáforos antes de terminar
