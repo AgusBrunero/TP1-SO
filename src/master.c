@@ -219,7 +219,7 @@ int main(int argc, char *argv[]) {
         sem_post(&gameState->sems.writer);
 
         // Verificar movimientos pendientes
-        for(int i = 0; i < gameState->playerCount; i++) {
+        for(int i = 0; i < MAXPLAYERS-1; i++) {
             if(gameState->hasPendingMove[i] == 1) {
                 // TODO: procesar movimiento del jugador i
                 printf("Jugador %d tiene movimiento pendiente\n", i+1);
@@ -229,8 +229,9 @@ int main(int argc, char *argv[]) {
 
         sem_post(&gameState->sems.mutex);
         
+        printf("Paso un ciclo de master\n");
         sleep(delay); // Usar el delay configurado
-        gameState->finished = true; // TODO: Agregado temporalmente para salir del loop
+        //gameState->finished = true; // Agregado temporalmente para salir del loop
     }
 
     // Cleanup semáforos antes de terminar

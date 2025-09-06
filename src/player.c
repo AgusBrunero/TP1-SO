@@ -17,10 +17,14 @@ int main(int argc, char* argv[]) {
 
     printf("¡Hola! Soy un JUGADOR con PID: %d\n", getpid());
     printf("Recibí ancho: %s, alto: %s\n", argv[1], argv[2]);
+
+    int playerIndex = 0; // TODO: obtener índice real del jugador (siempre es jugador 1)
+    gameState->hasPendingMove[playerIndex] = 1;
+
     while (!gameState->finished) {
         sem_wait(&gameState->sems.writer);
-        int playerIndex = 0; // TODO: obtener índice real del jugador
-        gameState->hasPendingMove[playerIndex] = 1;
+        // int playerIndex = 0;
+        // gameState->hasPendingMove[playerIndex] = 1;
         sem_post(&gameState->sems.writer);
 
         sem_wait(&gameState->sems.readers_count_mutex);
