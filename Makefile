@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -std=c99 -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE
+CFLAGS = -g -Wall -std=c99 -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE
 LDFLAGS = -pthread -lrt
 
 SRC_DIR = src

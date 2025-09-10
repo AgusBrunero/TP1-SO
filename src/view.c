@@ -37,6 +37,7 @@
 #define PLAYER7 "\033[97m"  // Blanco brillante
 #define PLAYER8 "\033[33m"  // Amarillo normal
 #define PLAYER9 "\033[35m"  // Magenta normal
+char test = 0;
 void printBoard(gameState_t * gameState) {
     for (int i = 0; i < gameState->height; i++) {
         for (int j = 0; j < gameState->width; j++) {

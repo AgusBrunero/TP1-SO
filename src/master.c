@@ -149,7 +149,7 @@ static void populateGameStateFromArgs(gameState_t * gameState, const char* gameS
 
     //resto los primeros 6 argumentos fijos
     //procName, w,h,d,t,seed,viewBin
-    gameState->playerCount = argc - MIN_MASTER_ARGC + 1;
+    gameState->playerCount = argc - MIN_MASTER_ARGC;
     gameState->finished = false;
     randomizeBoard(gameState->board, width, height, seed);
 
@@ -161,17 +161,20 @@ static void populateGameStateFromArgs(gameState_t * gameState, const char* gameS
     // Crea los procesos de players
     for (int i = 0; i < gameState->playerCount; i++) {
         Point_t spawnPoint = getSpawnPoint(i, width, height);
-        gameState->playerArr[i] = *playerFromBin(argv[MIN_MASTER_ARGC - 1 + i], i + 1, spawnPoint.x, spawnPoint.y, gameStateDir, gameStateByteSize);
+        gameState->playerArr[i] = *playerFromBin(argv[MIN_MASTER_ARGC + i], i + 1, spawnPoint.x, spawnPoint.y, gameStateDir, gameStateByteSize);
     }
 }
 
 const char * gameState_shm_name = "/gamestate_shm";
+
 int main(int argc, char *argv[]) {
+    
     printf("Master PID: %d\n", getpid());
     const int width = strtol(argv[1], NULL, 10);
     const int height = strtol(argv[2], NULL, 10);
     const char* viewBinary = argv[6];
 
+    // Memoria compartida para gameState
     const int shm_fd = shm_open(gameState_shm_name, O_CREAT | O_RDWR, 0666);
     if (shm_fd == -1) {
         perror("shm_open failed");
@@ -211,7 +214,7 @@ int main(int argc, char *argv[]) {
     printf("Creado proceso vista con PID: %d\n", view_pid);
 
     populateGameStateFromArgs(gameState, gameState_shm_name, structByteSize, argc, argv);
-
+    
     while (!gameState->finished) {
         // TODO: recibir_movimiento();
         
@@ -234,6 +237,7 @@ int main(int argc, char *argv[]) {
         sleep(delay); // Usar el delay configurado
         gameState->finished = true; // Agregado temporalmente para salir del loop
     }
+    
 
     // Cleanup semáforos antes de terminar
     sem_destroy(&gameState->sems.mutex);
@@ -261,5 +265,6 @@ int main(int argc, char *argv[]) {
     munmap(gameState, structByteSize);
     shm_unlink(gameState_shm_name);
     printf("Terminó master con PID: %d\n", getpid());
+
     return 0;
 }
