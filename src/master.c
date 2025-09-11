@@ -25,10 +25,13 @@ typedef struct doublePointStruct {
     double x;
     double y;
 } dPoint_t;
-typedef struct PointStruct {
+typedef struct pointStruct {
     unsigned short x;
     unsigned short y;
-} Point_t;
+} point_t;
+
+
+
 //valores entre [0,1], que se expresa como porcentaje de la dimension del board
 //El player i empieza en (spawnPoints[i].x * (width - 1), spawnPoints[i].y * (height - 1))
 static dPoint_t spawnPointsMult[MAXPLAYERS] = {
@@ -42,12 +45,19 @@ static dPoint_t spawnPointsMult[MAXPLAYERS] = {
     {1, 0.5}, // Player 8 (6 en numpad)
     {0.5, 1}  // Player 9 (8 en numpad)
 };
-Point_t static getSpawnPoint(int playerIndex, int boardWidth, int boardHeight) {
-    Point_t point;
+point_t static getSpawnPoint(int playerIndex, int boardWidth, int boardHeight) {
+    point_t point;
     point.x = (unsigned short)(spawnPointsMult[playerIndex].x * (boardWidth - 1));
     point.y = (unsigned short)(spawnPointsMult[playerIndex].y * (boardHeight - 1));
     return point;
 }
+
+//Prototipos de funciones
+
+/*
+ * destruye todos los semáforos en el struct semaphores_t
+ */
+void destroySemaphores(semaphores_t *semaphores);
 
 /*
  * Inicializa el tablero int[][] con valores aleatorios entre 0 y 9
@@ -94,7 +104,7 @@ pid_t newProc(const char * binary, char * const argv[]) {
  * retorna un puntero a un player_t inicializado
  * en caso de error termina el programa
  */
-static player_t * playerFromBin(char * binPath, int intSuffix, int x, int y, const char * shm_name, size_t gameStateByteSize) {
+static player_t * playerFromBin(char * binPath, int intSuffix, int x, int y, const char * gameStateShmName, size_t gameStateByteSize, const char * semaphoresShmName, size_t semaphoresByteSize) {
     player_t * player = malloc(sizeof(player_t));
     if (player == NULL || errno == ENOMEM) {
         printf("Malloc error\n");
@@ -110,10 +120,15 @@ static player_t * playerFromBin(char * binPath, int intSuffix, int x, int y, con
     char arg2[32];
     snprintf(arg2, sizeof(arg2), "%lu", gameStateByteSize);
 
-    char * const argv[4] = {
+    char arg3[32];
+    snprintf(arg3, sizeof(arg3), "%lu", semaphoresByteSize);
+
+    char * const argv[6] = {
         binPath,
-        (char *)shm_name,
+        (char *)gameStateShmName,
         arg2,
+        (char *)semaphoresShmName,
+        arg3,
         NULL
     };
 
@@ -123,7 +138,7 @@ static player_t * playerFromBin(char * binPath, int intSuffix, int x, int y, con
         exit(EXIT_FAILURE);
     }
     player->pid = pid;
-    player->blocked = false;
+    player->isBlocked = false;
     return player;
 }
 
@@ -132,7 +147,7 @@ static player_t * playerFromBin(char * binPath, int intSuffix, int x, int y, con
  * Asume todos los parametros correctos y que hay al menos 1 player
  * Parametros de entrada: procName, width, height, delay, timeout, seed, viewBin, playerBin1, playerBin2, ...
 */
-static void populateGameStateFromArgs(gameState_t * gameState, const char* gameStateDir, size_t gameStateByteSize, int argc, char* argv[]) {
+static void populateGameStateFromArgs(gameState_t * gameState, semaphores_t *semaphores, const char* gameStateDir, size_t gameStateByteSize, const char* semaphoresDir, size_t semaphoresByteSize, int argc, char* argv[]) {
     int width = strtol(argv[1], NULL, 10);
     int height = strtol(argv[2], NULL, 10);
     gameState->width = width;
@@ -142,30 +157,21 @@ static void populateGameStateFromArgs(gameState_t * gameState, const char* gameS
     timeout = strtol(argv[4], NULL, 10);
     seed = strtol(argv[5], NULL, 10);
 
-    sem_init(&gameState->sems.mutex, 1, 1);
-    sem_init(&gameState->sems.writer, 1, 1);
-    sem_init(&gameState->sems.readers_count_mutex, 1, 1);
-    gameState->sems.readers_count = 0;
-
     //resto los primeros 6 argumentos fijos
     //procName, w,h,d,t,seed,viewBin
     gameState->playerCount = argc - MIN_MASTER_ARGC;
     gameState->finished = false;
     randomizeBoard(gameState->board, width, height, seed);
 
-    // Inicializar arreglo de movimientos pendientes
-    for(int i = 0; i < MAXPLAYERS; i++) {
-        gameState->hasPendingMove[i] = 0;
-    }
-    
     // Crea los procesos de players
     for (int i = 0; i < gameState->playerCount; i++) {
-        Point_t spawnPoint = getSpawnPoint(i, width, height);
-        gameState->playerArr[i] = *playerFromBin(argv[MIN_MASTER_ARGC + i], i + 1, spawnPoint.x, spawnPoint.y, gameStateDir, gameStateByteSize);
+        point_t spawnPoint = getSpawnPoint(i, width, height);
+        gameState->playerArray[i] = *playerFromBin(argv[MIN_MASTER_ARGC + i], i + 1, spawnPoint.x, spawnPoint.y, gameStateDir, gameStateByteSize, semaphoresDir, semaphoresByteSize);
     }
 }
 
 const char * gameState_shm_name = "/gamestate_shm";
+const char * semaphores_shm_name = "/semaphores_shm";
 
 int main(int argc, char *argv[]) {
     
@@ -174,36 +180,91 @@ int main(int argc, char *argv[]) {
     const int height = strtol(argv[2], NULL, 10);
     const char* viewBinary = argv[6];
 
-    // Memoria compartida para gameState
+    // Inicialización de la memoria compartida para gameState
     const int shm_fd = shm_open(gameState_shm_name, O_CREAT | O_RDWR, 0666);
     if (shm_fd == -1) {
         perror("shm_open failed");
         exit(EXIT_FAILURE);
     }
-
-    /*
-     * Esto es super incomodo, pero por enunciado board no puede ser un puntero, asi que toca
-     * mallocearlo con el tamaño del struct + el tamaño del board
-     * :(
-     */
     const size_t boardByteSize = height * width * sizeof(int);
-    const size_t structByteSize = sizeof(gameState_t) + boardByteSize;
+    const size_t gameStateStructByteSize = sizeof(gameState_t) + boardByteSize;
     char structByteSizeStr[16];
-    snprintf(structByteSizeStr, sizeof(structByteSizeStr), "%d", (int)structByteSize);
+    snprintf(structByteSizeStr, sizeof(structByteSizeStr), "%d", (int)gameStateStructByteSize);
 
     //ftruncate resizea el bloque de memoria compartida de shm_open
-    if (ftruncate(shm_fd, structByteSize) == -1) {
+    if (ftruncate(shm_fd, gameStateStructByteSize) == -1) {
         perror("ftruncate failed");
         exit(EXIT_FAILURE);
     }
 
-    gameState_t * gameState = mmap(NULL, structByteSize, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    gameState_t * gameState = mmap(NULL, gameStateStructByteSize, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
     if (gameState == MAP_FAILED) {
         perror("mmap failed");
         exit(EXIT_FAILURE);
     }
     close(shm_fd); // El descriptor ya no es necesario después de mmap
 
+
+
+    // Inicialización de la memoria compartida para semáforos
+    const int sem_shm_fd = shm_open(semaphores_shm_name, O_CREAT | O_RDWR, 0666);
+    if (sem_shm_fd == -1) {
+        perror("shm_open failed for semaphores");
+        exit(EXIT_FAILURE);
+    }
+    const size_t semaphoresStructByteSize = sizeof(semaphores_t);
+    // ftruncate resizea el bloque de memoria compartida de shm_open
+    if (ftruncate(sem_shm_fd, semaphoresStructByteSize) == -1) {
+        perror("ftruncate failed for semaphores");
+        exit(EXIT_FAILURE);
+    }
+    semaphores_t *semaphores = mmap(NULL, semaphoresStructByteSize, PROT_READ | PROT_WRITE, MAP_SHARED, sem_shm_fd, 0);
+    if (semaphores == MAP_FAILED) {
+        perror("mmap failed for semaphores");
+        exit(EXIT_FAILURE);
+    }
+    close(sem_shm_fd); // El descriptor ya no es necesario después de mmap
+
+    // Inicializar los semáforos
+    if (sem_init(&semaphores->masterToView, 1, 0) == -1) {
+        perror("sem_init failed for masterToView");
+        exit(EXIT_FAILURE);
+    }
+
+    if (sem_init(&semaphores->viewToMaster, 1, 0) == -1) {
+        perror("sem_init failed for viewToMaster");
+        exit(EXIT_FAILURE);
+    }
+
+    if (sem_init(&semaphores->masterMutex, 1, 1) == -1) {
+        perror("sem_init failed for masterMutex");
+        exit(EXIT_FAILURE);
+    }
+
+    if (sem_init(&semaphores->gameStateMutex, 1, 1) == -1) {
+        perror("sem_init failed for gameStateMutex");
+        exit(EXIT_FAILURE);
+    }
+
+    if (sem_init(&semaphores->readersCountMutex, 1, 1) == -1) {
+        perror("sem_init failed for readersCountMutex");
+        exit(EXIT_FAILURE);
+    }
+
+    // Inicializar contador de lectores
+    semaphores->readers_count = 0;
+
+    // Inicializar semáforos de jugadores
+    for (int i = 0; i < 9; i++) {
+        if (sem_init(&semaphores->playerSems[i], 1, 1) == -1) {
+            perror("sem_init failed for playerSems");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+
+
+    // Crear proceso de vista
     char * const viewArgs[] = {(char *)viewBinary, (char *)gameState_shm_name, structByteSizeStr, NULL};
     pid_t view_pid = newProc(viewBinary, viewArgs);
 
@@ -213,25 +274,27 @@ int main(int argc, char *argv[]) {
     }
     printf("Creado proceso vista con PID: %d\n", view_pid);
 
-    populateGameStateFromArgs(gameState, gameState_shm_name, structByteSize, argc, argv);
-    
+    populateGameStateFromArgs(gameState,semaphores, gameState_shm_name, gameStateStructByteSize, semaphores_shm_name, semaphoresStructByteSize, argc, argv);
+
     while (!gameState->finished) {
-        // TODO: recibir_movimiento();
+        // En en while:
+        // 1. Esperar a que los jugadores envíen movimientos (si los hay) [TODO]
+        // 2. Procesar y actualizar el estado del juego [TODO]
+        // 3. Notificar a la vista que hay cambios para mostrar [OK]
+        // 4. Esperar a que la vista termine de mostrar los cambios [OK]
+
+        // TODO: recibir_movimiento() (también validarlo en la función);
         
-        sem_wait(&gameState->sems.writer);
-        sem_wait(&gameState->sems.mutex);
-        sem_post(&gameState->sems.writer);
+        sem_wait(&semaphores->masterMutex);
+        sem_wait(&semaphores->gameStateMutex);  // para qué es este?
 
-        // Verificar movimientos pendientes
-        for(int i = 0; i < MAXPLAYERS-1; i++) {
-            if(gameState->hasPendingMove[i] == 1) {
-                // TODO: procesar movimiento del jugador i
-                printf("Jugador %d tiene movimiento pendiente\n", i+1);
-                gameState->hasPendingMove[i] = 0; // Resetear flag
-            }
-        }
+        // TODO: Actualizar el estado del juego
 
-        sem_post(&gameState->sems.mutex);
+        sem_post(&semaphores->masterMutex); // Liberar la lectura para los players
+
+        sem_post(&semaphores->masterToView); // Notificar a la vista que hay cambios
+        sem_wait(&semaphores->viewToMaster); // Esperar a que la vista termine de mostrar los cambios
+        
         
         printf("Paso un ciclo de master\n");
         sleep(delay); // Usar el delay configurado
@@ -239,10 +302,7 @@ int main(int argc, char *argv[]) {
     }
     
 
-    // Cleanup semáforos antes de terminar
-    sem_destroy(&gameState->sems.mutex);
-    sem_destroy(&gameState->sems.writer);
-    sem_destroy(&gameState->sems.readers_count_mutex);
+    destroySemaphores(semaphores);
 
     //aca wait escribe el codigo con el que termino el proceso hijo
     int status;
@@ -262,9 +322,22 @@ int main(int argc, char *argv[]) {
     printf("Terminaron todos los hijos :)\n");
 
     // Agregar limpieza del shared memory
-    munmap(gameState, structByteSize);
+    munmap(gameState, gameStateStructByteSize);
     shm_unlink(gameState_shm_name);
     printf("Terminó master con PID: %d\n", getpid());
 
     return 0;
+}
+
+
+
+void destroySemaphores(semaphores_t *semaphores) {
+    sem_destroy(&semaphores->masterToView);
+    sem_destroy(&semaphores->viewToMaster);
+    sem_destroy(&semaphores->masterMutex);
+    sem_destroy(&semaphores->gameStateMutex);
+    sem_destroy(&semaphores->readersCountMutex);
+    for (int i = 0; i < 9; i++) {
+        sem_destroy(&semaphores->playerSems[i]);
+    }
 }

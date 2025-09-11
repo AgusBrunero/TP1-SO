@@ -4,11 +4,15 @@
 #include <stdbool.h>
 #include <semaphore.h>
 
+
 typedef struct semaphoresStruct {
-    sem_t mutex;
-    sem_t writer;
-    sem_t readers_count_mutex;
-    int readers_count;
+    sem_t masterToView; // El máster le indica a la vista que hay cambios por imprimir
+    sem_t viewToMaster; // La vista le indica al máster que terminó de imprimir
+    sem_t masterMutex; // Mutex para evitar inanición del máster al acceder al estado
+    sem_t gameStateMutex; // Mutex para el estado del juego
+    sem_t readersCountMutex; // Mutex para la siguiente variable
+    int readers_count; // Cantidad de jugadores leyendo el estado
+    sem_t playerSems[9]; // Le indican a cada jugador que puede enviar 1 movimiento
 } semaphores_t;
 
 typedef struct playerStruct {
@@ -18,17 +22,15 @@ typedef struct playerStruct {
     unsigned int validReqs; // Cantidad de solicitudes de movimientos válidas realizadas
     unsigned short x, y; // Coordenadas x e y en el tablero
     pid_t pid; // Identificador de proceso
-    bool blocked; // Indica si el jugador está bloqueado
+    bool isBlocked; // Indica si el jugador está bloqueado
 } player_t;
 
 typedef struct gameStateStruct {
-    semaphores_t sems;
     unsigned short width; // Ancho del tablero
     unsigned short height; // Alto del tablero
     unsigned int playerCount; // Cantidad de jugadores
-    player_t playerArr[9]; // Lista de jugadores
+    player_t playerArray[9]; // Lista de jugadores
     bool finished; // Indica si el juego se ha terminado
-    int hasPendingMove[9]; // Arreglo para indicar movimientos pendientes por jugador
     int board[]; // Puntero al comienzo del tablero. fila-0, fila-1, ..., fila-n-1
 } gameState_t;
 

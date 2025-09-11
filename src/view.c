@@ -44,7 +44,7 @@ void printBoard(gameState_t * gameState) {
             bool isPlayer = false;
             int playerIdx = -1;
             for (int p = 0; p < gameState->playerCount; p++) {
-                if (gameState->playerArr[p].x == j && gameState->playerArr[p].y == i) {
+                if (gameState->playerArray[p].x == j && gameState->playerArray[p].y == i) {
                     isPlayer = true;
                     playerIdx = p;
                     break;

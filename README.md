@@ -19,5 +19,5 @@ El trabajo práctico consiste en aprender a utilizar los distintos tipos de IPCs
 
 # TO-DO:
 - [ ] Los parametros de alto y ancho se pasan mal a player
-- [ ] Se crean 2 procesos de view
+- [ ] Corregir la posición inicial de los players (ningun jugador debe tener ventajas de movimiento según enunciado, en lugar de ponerlos en las esquinas usar rand)
 - [ ] El primer ciclo de master no detecta el movimiento pendiente de player
