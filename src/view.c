@@ -26,6 +26,7 @@
  * 2- Memcompartida del gamestate
  */
 #include "defs.h"
+#include "chompChampsUtils.h"
 
 #define RESET   "\033[0m"
 #define PLAYER1 "\033[91m"  // Rojo brillante
@@ -38,7 +39,42 @@
 #define PLAYER8 "\033[33m"  // Amarillo normal
 #define PLAYER9 "\033[35m"  // Magenta normal
 char test = 0;
+void printBoard(gameState_t * gameState);
+
+/*
+char * const viewArgs[] = 
+{(char *)viewBinary, 
+(char *)gameStateShmName, 
+gameStateByteSizeStr,
+(char *)semaphoresShmName, 
+semaphoresByteSizeStr, 
+NULL};*/
+
+int main(int argc, char* argv[]) {
+    if (argc < 3) {
+        fprintf(stderr, "Fallo en creacion de vista, argumentos: %s <nombre_shm>, %s <tamaño de bytes del gamestate>\n", argv[0], argv[1]);
+        exit(EXIT_FAILURE);
+    }
+
+
+    gameState_t* gameState;
+    semaphores_t* semaphores;
+    openShMems(argv[1], strtol(argv[2], NULL, 10), &gameState, argv[3], strtol(argv[4], NULL, 10), &semaphores);
+
+    while (!gameState->finished) {
+        sem_wait(&semaphores->masterToView);
+        printBoard(gameState);
+        sem_post(&semaphores->viewToMaster);
+    }
+
+    printf("¡Hola! Soy la VISTA con PID: %d\n", getpid());
+    printBoard(gameState);
+
+    return 0;
+}
+
 void printBoard(gameState_t * gameState) {
+    printf("\033[2J\033[H");
     for (int i = 0; i < gameState->height; i++) {
         for (int j = 0; j < gameState->width; j++) {
             bool isPlayer = false;
@@ -72,36 +108,4 @@ void printBoard(gameState_t * gameState) {
         }
         printf("\n");
     }
-}
-
-int main(int argc, char* argv[]) {
-    if (argc < 3) {
-        fprintf(stderr, "Fallo en creacion de vista, argumentos: %s <nombre_shm>, %s <tamaño de bytes del gamestate>\n", argv[0], argv[1]);
-        exit(EXIT_FAILURE);
-    }
-    const char* shm_name = argv[1];
-    const int shm_size = strtol(argv[2], NULL, 10);
-
-    // Primero abrimos el segmento y mapeamos sólo el struct base para leer width y height
-    int shm_fd = shm_open(shm_name, O_RDONLY, 0666);
-    if (shm_fd == -1) {
-        perror("error en shm_open en vista");
-        exit(EXIT_FAILURE);
-    }
-    gameState_t * gameState = mmap(NULL, shm_size, PROT_READ, MAP_SHARED, shm_fd, 0);
-    if (gameState == MAP_FAILED) {
-        perror("mmap base en vista");
-        exit(EXIT_FAILURE);
-    }
-
-    // int width = gameState->width;
-    // int height = gameState->height;
-    // gameState->board[width * height - 1] = -5; // Solo para probar que es readOnly escribir
-
-    printf("¡Hola! Soy la VISTA con PID: %d\n", getpid());
-    printBoard(gameState);
-
-    munmap(gameState, shm_size);
-    close(shm_fd);
-    return 0;
 }
