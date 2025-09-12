@@ -6,12 +6,13 @@
 #include "defs.h"
 #include "chompChampsUtils.h"
 
-int main(int argc, char* argv[]) {
+// argv[1] = widht
+// argv[2] = height
 
-    printf("%d %s %s %s %s %s %s\n", argc ,argv[0],argv[1],argv[2],argv[3],argv[4],argv[5]);
+int main(int argc, char* argv[]) {
     gameState_t* gameState;
     semaphores_t* semaphores;
-    openShMems(argv[1], strtol(argv[2], NULL, 10), &gameState, argv[3], strtol(argv[4], NULL, 10), &semaphores);
+    openShms(strtoul(argv[1], NULL, 10), strtoul(argv[2], NULL, 10), &gameState, &semaphores);
 
     gameState_t* savedGameState = malloc(sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
     checkMalloc(savedGameState, "malloc failed for savedGameState", EXIT_FAILURE);

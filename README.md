@@ -18,6 +18,6 @@ El trabajo práctico consiste en aprender a utilizar los distintos tipos de IPCs
 ```./bin/tests```
 
 # TO-DO:
-- [ ] Los parametros de alto y ancho se pasan mal a player
 - [ ] Corregir la posición inicial de los players (ningun jugador debe tener ventajas de movimiento según enunciado, en lugar de ponerlos en las esquinas usar rand)
-- [ ] El primer ciclo de master no detecta el movimiento pendiente de player
+- [ ] LIMPIAR POPULATEGAME y subfunciones, se convierte muchas veces de string a int y de int a string lo mismo, se puede hacer mucho más prolijo
+- [ ] PIPES

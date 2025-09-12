@@ -34,4 +34,6 @@ typedef struct gameStateStruct {
     int board[]; // Puntero al comienzo del tablero. fila-0, fila-1, ..., fila-n-1
 } gameState_t;
 
+
+
 #endif //DEFS_H

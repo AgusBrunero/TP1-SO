@@ -37,20 +37,68 @@ void getGameState(gameState_t* gameState, semaphores_t* semaphores, gameState_t*
 }
 
 
-void openShMems(const char* gameStateShmName, size_t gameStateByteSize, gameState_t** gameState,
-               const char* semaphoresShmName, size_t semaphoresByteSize, semaphores_t** semaphores){
+void createShms(unsigned short width, unsigned short height) {
+    // Crear memoria compartida para gameState
+    size_t gameStateByteSize = sizeof(gameState_t) + width * height * sizeof(int);
+    int gameStateShmFd = shm_open("/game_state", O_CREAT | O_RDWR | O_TRUNC, 0666);
+    if (gameStateShmFd == -1) {
+        perror("shm_open (create) game_state");
+        exit(EXIT_FAILURE);
+    }
+    if (ftruncate(gameStateShmFd, gameStateByteSize) == -1) {
+        perror("ftruncate game_state");
+        close(gameStateShmFd);
+        exit(EXIT_FAILURE);
+    }
+    close(gameStateShmFd);
 
-    int gameStateShmFd = shm_open(gameStateShmName, O_RDWR, 0666);
-    char * gameStateShm = mmap(NULL, gameStateByteSize, PROT_READ | PROT_WRITE, MAP_SHARED, gameStateShmFd, 0);
-    *gameState  = (gameState_t*)gameStateShm;
-
-    int semaphoresShmFd = shm_open(semaphoresShmName, O_RDWR, 0666);
-    char * semaphoresShm = mmap(NULL, semaphoresByteSize, PROT_READ | PROT_WRITE, MAP_SHARED, semaphoresShmFd, 0);
-    *semaphores = (semaphores_t*)semaphoresShm;
+    // Crear memoria compartida para semaphores
+    size_t semaphoresByteSize = sizeof(semaphores_t);
+    int semaphoresShmFd = shm_open("/game_sync", O_CREAT | O_RDWR | O_TRUNC, 0666);
+    if (semaphoresShmFd == -1) {
+        perror("shm_open (create) game_sync");
+        exit(EXIT_FAILURE);
+    }
+    if (ftruncate(semaphoresShmFd, semaphoresByteSize) == -1) {
+        perror("ftruncate game_sync");
+        close(semaphoresShmFd);
+        exit(EXIT_FAILURE);
+    }
+    close(semaphoresShmFd);
 }
+
+void openShms(unsigned short width, unsigned short height, gameState_t** gameState, semaphores_t** semaphores) {
+    // Mapear memoria compartida de gameState
+    size_t gameStateByteSize = sizeof(gameState_t) + width * height * sizeof(int);
+    int gameStateShmFd = shm_open("/game_state", O_RDWR, 0666);
+    if (gameStateShmFd == -1) {
+        perror("shm_open game_state");
+        exit(EXIT_FAILURE);
+    }
+    *gameState = mmap(NULL, gameStateByteSize, PROT_READ | PROT_WRITE, MAP_SHARED, gameStateShmFd, 0);
+    close(gameStateShmFd);
+
+    // Mapear memoria compartida de semaphores
+    size_t semaphoresByteSize = sizeof(semaphores_t);
+    int semaphoresShmFd = shm_open("/game_sync", O_RDWR, 0666);
+    if (semaphoresShmFd == -1) {
+        perror("shm_open game_sync");
+        exit(EXIT_FAILURE);
+    }
+    *semaphores = mmap(NULL, semaphoresByteSize, PROT_READ | PROT_WRITE, MAP_SHARED, semaphoresShmFd, 0);
+    close(semaphoresShmFd);
+}
+
 
 void checkMalloc(void* ptr, const char* msg, int exitCode) {
     if (ptr == NULL) {
+        perror(msg);
+        exit(exitCode);
+    }
+}
+
+void checkPid(pid_t pid, const char* msg, int exitCode){
+    if (pid == -1) {
         perror(msg);
         exit(exitCode);
     }

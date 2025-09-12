@@ -20,11 +20,7 @@
 "╬╩╦╗╚╝╔"
 */
 
-/*
- * Asumo parametros en forma:
- * 1- nombre del proceso (vista)
- * 2- Memcompartida del gamestate
- */
+
 #include "defs.h"
 #include "chompChampsUtils.h"
 
@@ -38,37 +34,30 @@
 #define PLAYER7 "\033[97m"  // Blanco brillante
 #define PLAYER8 "\033[33m"  // Amarillo normal
 #define PLAYER9 "\033[35m"  // Magenta normal
-char test = 0;
+
 void printBoard(gameState_t * gameState);
 
-/*
-char * const viewArgs[] = 
-{(char *)viewBinary, 
-(char *)gameStateShmName, 
-gameStateByteSizeStr,
-(char *)semaphoresShmName, 
-semaphoresByteSizeStr, 
-NULL};*/
+
+// argv[1] = widht
+// argv[2] = height
 
 int main(int argc, char* argv[]) {
-    if (argc < 3) {
+
+    if (argc < 2) {
         fprintf(stderr, "Fallo en creacion de vista, argumentos: %s <nombre_shm>, %s <tamaño de bytes del gamestate>\n", argv[0], argv[1]);
         exit(EXIT_FAILURE);
     }
-
-
+    printf("¡Hola! Soy la VISTA con PID: %d\n", getpid());
+    
     gameState_t* gameState;
     semaphores_t* semaphores;
-    openShMems(argv[1], strtol(argv[2], NULL, 10), &gameState, argv[3], strtol(argv[4], NULL, 10), &semaphores);
+    openShms(strtoul(argv[1], NULL, 10), strtoul(argv[2], NULL, 10), &gameState, &semaphores);
 
     while (!gameState->finished) {
         sem_wait(&semaphores->masterToView);
         printBoard(gameState);
         sem_post(&semaphores->viewToMaster);
     }
-
-    printf("¡Hola! Soy la VISTA con PID: %d\n", getpid());
-    printBoard(gameState);
 
     return 0;
 }
