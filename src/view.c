@@ -63,7 +63,7 @@ int main(int argc, char* argv[]) {
 }
 
 void printBoard(gameState_t * gameState) {
-    printf("\033[2J\033[H");
+    printf("\033[2J\033[H");    // limpiar pantalla
     for (int i = 0; i < gameState->height; i++) {
         for (int j = 0; j < gameState->width; j++) {
             bool isPlayer = false;

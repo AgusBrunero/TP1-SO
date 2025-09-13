@@ -67,6 +67,7 @@ point_t static getSpawnPoint(int playerIndex, int boardWidth, int boardHeight) {
 static unsigned short width, height;
 static unsigned int timeout, delay;
 static int seed;
+static int pipes[MAXPLAYERS][2];
 
 
 // Prototipos de funciones
@@ -74,7 +75,7 @@ static int seed;
 /*
  * Inicializa los valores de los semáforos
  */
-void semaphoresInit(semaphores_t * semaphores);
+static void semaphoresInit(semaphores_t * semaphores);
 
 /*
  * Inicializa el estado del juego
@@ -84,18 +85,23 @@ static void gameStateInit (gameState_t * gameState, char* widthStr, char* height
 /*
  * destruye todos los semáforos en el struct semaphores_t
  */
-void destroySemaphores(semaphores_t *semaphores);
+static void destroySemaphores(semaphores_t *semaphores);
 
 /*
  * Inicializa el tablero int[][] con valores aleatorios entre 0 y 9
  */
-void randomizeBoard(int* board, int width, int height, int seed);
+static void randomizeBoard(int* board, int width, int height, int seed);
 
 /*
  * intenta iniciar el binario de path con los argumentos dados
  * retorna -1 en error, o el pid del proceso hijo
  */
-pid_t newProc(const char * binary, char * const argv[]);
+static pid_t newProc(const char * binary, char * const argv[]);
+
+/*
+ * misma función que newProc, pero redirige el stdout del hijo al pipe dado  
+*/
+static pid_t newPipedProc(const char * binary, int pipe_fd, char * const argv[]);
 
 /*
  * Crea un nuevo player_t inicializado con los parametros dados
@@ -109,10 +115,14 @@ pid_t newProc(const char * binary, char * const argv[]);
  */
 static player_t * playerFromBin(char * binPath, int intSuffix, unsigned short x, unsigned short y, char * widthStr, char * heightStr);
 
+
+static void freeResources();
+
 // Función para actualizar las coordenadas según la dirección
-void actualizarPosicion(player_t* player, unsigned char direccion, unsigned short width, unsigned short height);
+static void updatePlayerPosition(player_t* player, unsigned char direccion, unsigned short width, unsigned short height);
 
 int main(int argc, char *argv[]) {
+
     // recepción de parámetros
     printf("Master PID: %d\n", getpid());
     char * widthStr = argv[1];
@@ -144,35 +154,44 @@ int main(int argc, char *argv[]) {
     pid_t view_pid = newProc(viewBinary, viewArgs);
     checkPid(view_pid, "Error creando proceso vista", EXIT_FAILURE);
     printf("Creado proceso vista con PID: %d\n", view_pid);
+    sem_post(&semaphores->masterToView); // pedirle a la vista imprimir estado inicial del tablero
+    sem_wait(&semaphores->viewToMaster);
 
 
-
-
+    unsigned char playerChecking = 0 ; // indice del jugador a verificar 
 
     while (!gameState->finished) {
-        // Permitir a todos los jugadores enviar un movimiento
-        for (int i = 0; i < gameState->playerCount; i++) {
-            sem_post(&semaphores->playerSems[i]);
+        sem_wait(&semaphores->masterMutex); // Bloqueo a los jugadores al inicio del loop
+        sem_wait(&semaphores->gameStateMutex); // Espero a que terminen los que ya estaban leyendo
+        
+        unsigned char nextMove = -1;
+        ssize_t bytesReaded = read(pipes[playerChecking][0], &nextMove, 1);
+        if (bytesReaded == -1) {
+            if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                perror("Error reading from pipe");
+                exit(EXIT_FAILURE);
+            }
+        } else if (bytesReaded == 1) {
+            updatePlayerPosition(&gameState->playerArray[playerChecking], nextMove, gameState->width, gameState->height);
+            sem_post(&semaphores->playerSems[playerChecking]); // le aviso al jugador que puede mandar otro movimiento.
         }
 
-        // Esperar y procesar los movimientos de cada jugador
-        sem_wait(&semaphores->gameStateMutex);
-        for (int i = 0; i < gameState->playerCount; i++) {
-            // TODO: leer la dirección enviada por el jugador i
-            unsigned char direccion = rand() % 8; // Dirección aleatoria para pruebas
-            actualizarPosicion(&gameState->playerArray[i], direccion, gameState->width, gameState->height);
-        }
-        sem_post(&semaphores->gameStateMutex);
+        sem_post(&semaphores->gameStateMutex); // Liberar el estado para los jugadores
+        sem_post(&semaphores->masterMutex); 
 
-        // Notificar a la vista y esperar que termine
-        sem_post(&semaphores->masterToView);
-        sem_wait(&semaphores->viewToMaster);
+        if (bytesReaded == 1) { // si hubo cambios, notificar a la vista
+            sem_post(&semaphores->masterToView);
+            sem_wait(&semaphores->viewToMaster);
+        }
+
+        if (++playerChecking >= gameState->playerCount) {
+            playerChecking = 0;
+        }
 
         usleep(delay * 1000); // Convertir delay a microsegundos
     }
     
 
-    destroySemaphores(semaphores);
 
     //aca wait escribe el codigo con el que termino el proceso hijo
     int status;
@@ -190,13 +209,10 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Terminaron todos los hijos :)\n");
-
-    // Agregar limpieza del shared memory
-    // munmap(gameState, gameStateByteSize);
-    // shm_unlink(gameStateShmName);
-    // munmap(semaphores, semaphoresByteSize);
-    // shm_unlink(semaphoresShmName);
     printf("Terminó master con PID: %d\n", getpid());
+
+    freeResources();
+    destroySemaphores(semaphores);
 
     return 0;
 }
@@ -216,7 +232,7 @@ static void gameStateInit (gameState_t * gameState, char* widthStr, char* height
     }
 }
 
-void semaphoresInit(semaphores_t * semaphores){
+static void semaphoresInit(semaphores_t * semaphores){
     if (sem_init(&semaphores->masterToView, 1, 0) == -1) {
         perror("sem_init failed for masterToView");
         exit(EXIT_FAILURE);
@@ -255,7 +271,7 @@ void semaphoresInit(semaphores_t * semaphores){
 
 }
 
-void destroySemaphores(semaphores_t *semaphores) {
+static void destroySemaphores(semaphores_t *semaphores) {
     sem_destroy(&semaphores->masterToView);
     sem_destroy(&semaphores->viewToMaster);
     sem_destroy(&semaphores->masterMutex);
@@ -266,7 +282,7 @@ void destroySemaphores(semaphores_t *semaphores) {
     }
 }
 
-void randomizeBoard(int* board, int width, int height, int seed) {
+static void randomizeBoard(int* board, int width, int height, int seed) {
     srand(seed);
     for (int i = 0; i < height; i++) {
        for (int j = 0; j < width; j++) {
@@ -275,7 +291,7 @@ void randomizeBoard(int* board, int width, int height, int seed) {
     }
 }
 
-pid_t newProc(const char * binary, char * const argv[]) {
+static pid_t newProc(const char * binary, char * const argv[]) {
     pid_t pid = fork();
 
     if (pid == -1) {
@@ -293,12 +309,33 @@ pid_t newProc(const char * binary, char * const argv[]) {
     return pid;
 }
 
+static pid_t newPipedProc(const char * binary, int pipe_fd, char * const argv[]) {
+    pid_t pid = fork();
+
+    if (pid == -1) {
+        printf("Fork error -1");
+        return -1;
+    }
+    if (pid == 0) {
+        // proceso hijo
+        dup2(pipe_fd, STDOUT_FILENO);
+        close(pipe_fd);
+        execvp(binary, argv);
+        // si se llega aquí, exec falló.
+        printf("Error en execvp");
+        exit(EXIT_FAILURE);
+    }
+    close(pipe_fd);
+    return pid;
+}
+
 static player_t * playerFromBin(char * binPath, int intSuffix, unsigned short x, unsigned short y, char * widthStr, char * heightStr){
     player_t * player = malloc(sizeof(player_t));
     checkMalloc(player, "malloc failed for player", EXIT_FAILURE);
 
     char * argv[] = {binPath, widthStr, heightStr, NULL};
-    pid_t pid = newProc(binPath, argv);
+    pipe(pipes[intSuffix]);
+    pid_t pid = newPipedProc(binPath, pipes[intSuffix][1], argv);
     if (pid == -1) {
         printf("Error creando proceso jugador %s with binary: %s\n", player->name, binPath);
         exit(EXIT_FAILURE);
@@ -316,7 +353,7 @@ static player_t * playerFromBin(char * binPath, int intSuffix, unsigned short x,
     return player;
 }
 
-void actualizarPosicion(player_t* player, unsigned char direccion, unsigned short width, unsigned short height) {
+void updatePlayerPosition(player_t* player, unsigned char direccion, unsigned short width, unsigned short height) {
     switch(direccion) {
         case NORTH:
             if (player->y > 0) player->y--;
@@ -355,4 +392,19 @@ void actualizarPosicion(player_t* player, unsigned char direccion, unsigned shor
             }
             break;
     }
+}
+
+static void freeResources() {
+    for (int i = 0; i < 9; i++) {
+        if (pipes[i][0] != -1) close(pipes[i][0]);
+        if (pipes[i][1] != -1) close(pipes[i][1]);
+    }
+    /* LIBERAR MEMORIA COMPARTIDA
+    munmap(gameState, gameStateByteSize);
+    shm_unlink(gameStateShmName);
+    munmap(semaphores, semaphoresByteSize);
+    shm_unlink(semaphoresShmName);
+    */
+
+
 }
