@@ -16,6 +16,15 @@
 #include <fcntl.h>       // O_CREAT, O_RDWR, O_TRUNC
 #include <unistd.h>      // ftruncate, close
 
+#define NORTH 0
+#define NORTHEAST 1
+#define EAST 2
+#define SOUTHEAST 3
+#define SOUTH 4
+#define SOUTHWEST 5
+#define WEST 6
+#define NORTHWEST 7
+
 #define MAXPLAYERS 9
 #define MAXPATHLEN 256
 #define ARGLEN 8
@@ -100,7 +109,8 @@ pid_t newProc(const char * binary, char * const argv[]);
  */
 static player_t * playerFromBin(char * binPath, int intSuffix, unsigned short x, unsigned short y, char * widthStr, char * heightStr);
 
-
+// Función para actualizar las coordenadas según la dirección
+void actualizarPosicion(player_t* player, unsigned char direccion, unsigned short width, unsigned short height);
 
 int main(int argc, char *argv[]) {
     // recepción de parámetros
@@ -140,29 +150,25 @@ int main(int argc, char *argv[]) {
 
 
     while (!gameState->finished) {
-        // En en while:
-        // 1. Esperar a que los jugadores envíen movimientos [TODO]
-        // 2. Procesar y actualizar el estado del juego [TODO]
-        // 3. Notificar a la vista que hay cambios para mostrar [OK]
-        // 4. Esperar a que la vista termine de mostrar los cambios [OK]
+        // Permitir a todos los jugadores enviar un movimiento
+        for (int i = 0; i < gameState->playerCount; i++) {
+            sem_post(&semaphores->playerSems[i]);
+        }
 
-        // TODO: recibir_movimiento() (también validarlo en la función);
-        
-        //sem_wait(&semaphores->masterMutex); // Bloqueo a los jugadores al inicio del loop
-        //sem_wait(&semaphores->gameStateMutex); // Espero a que terminen los que ya estaban leyendo
+        // Esperar y procesar los movimientos de cada jugador
+        sem_wait(&semaphores->gameStateMutex);
+        for (int i = 0; i < gameState->playerCount; i++) {
+            // TODO: leer la dirección enviada por el jugador i
+            unsigned char direccion = rand() % 8; // Dirección aleatoria para pruebas
+            actualizarPosicion(&gameState->playerArray[i], direccion, gameState->width, gameState->height);
+        }
+        sem_post(&semaphores->gameStateMutex);
 
-        // TODO: Actualizar el estado del juego
+        // Notificar a la vista y esperar que termine
+        sem_post(&semaphores->masterToView);
+        sem_wait(&semaphores->viewToMaster);
 
-        //sem_post(&semaphores->gameStateMutex); // Liberar el estado para los jugadores
-        //sem_post(&semaphores->masterMutex); 
-
-        sem_post(&semaphores->masterToView); // Notificar a la vista que hay cambios
-        sem_wait(&semaphores->viewToMaster); // Esperar a que la vista termine de mostrar los cambios
-        
-        
-        printf("Paso un ciclo de master\n");
-        //sleep(delay); // Usar el delay configurado
-        //gameState->finished = false; // Agregado temporalmente para salir del loop
+        usleep(delay * 1000); // Convertir delay a microsegundos
     }
     
 
@@ -310,3 +316,43 @@ static player_t * playerFromBin(char * binPath, int intSuffix, unsigned short x,
     return player;
 }
 
+void actualizarPosicion(player_t* player, unsigned char direccion, unsigned short width, unsigned short height) {
+    switch(direccion) {
+        case NORTH:
+            if (player->y > 0) player->y--;
+            break;
+        case NORTHEAST:
+            if (player->y > 0 && player->x < width-1) {
+                player->y--;
+                player->x++;
+            }
+            break;
+        case EAST:
+            if (player->x < width-1) player->x++;
+            break;
+        case SOUTHEAST:
+            if (player->y < height-1 && player->x < width-1) {
+                player->y++;
+                player->x++;
+            }
+            break;
+        case SOUTH:
+            if (player->y < height-1) player->y++;
+            break;
+        case SOUTHWEST:
+            if (player->y < height-1 && player->x > 0) {
+                player->y++;
+                player->x--;
+            }
+            break;
+        case WEST:
+            if (player->x > 0) player->x--;
+            break;
+        case NORTHWEST:
+            if (player->y > 0 && player->x > 0) {
+                player->y--;
+                player->x--;
+            }
+            break;
+    }
+}

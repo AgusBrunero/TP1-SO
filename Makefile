@@ -7,6 +7,9 @@ OBJ_DIR = obj
 TESTS_SRC = $(wildcard tests/*.c)
 TESTS_BIN = $(BIN_DIR)/tests
 
+# Crear directorios necesarios
+$(shell mkdir -p $(BIN_DIR) $(OBJ_DIR))
+
 # Archivo objeto de la librería
 UTILS_OBJ = $(OBJ_DIR)/chompChampsUtils.o
 
