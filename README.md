@@ -19,5 +19,9 @@ El trabajo práctico consiste en aprender a utilizar los distintos tipos de IPCs
 
 # TO-DO:
 - [ ] Corregir la posición inicial de los players (ningun jugador debe tener ventajas de movimiento según enunciado, en lugar de ponerlos en las esquinas usar rand)
-- [ ] LIMPIAR POPULATEGAME y subfunciones, se convierte muchas veces de string a int y de int a string lo mismo, se puede hacer mucho más prolijo
-- [ ] PIPES
+- [ ] COMPLETAR freeResources con todos los free y funciones para liberar recursos de mallocs, memoria compartida, etc.
+- [ ] Manejar los tiempos de las demoras en vista y jugadores. (para monitorear según pide el enunciado y aplicar timeout en caso de ser necesario)
+- [ ] validación de movimientos y actualización de jugadores y tablero.
+- [ ] mostrar en vista el estado COMPLETO del juego (puntajes, posición, etc. según marca el enunciado) 
+- [ ] el master debe realizar chequeos de consistencia en los semáforos (ver enunciado)
+- [ ] manejo de solicitudes válidas en inválidas.
