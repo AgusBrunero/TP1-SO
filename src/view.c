@@ -37,9 +37,10 @@
 
 #define MAX_PLAYERS 9
 
-void printBoard(gameState_t * gameState);
-int comparePlayers(const void* a, const void* b);
-void printFinalRanking(gameState_t* gameState);
+static void printBoard(gameState_t * gameState);
+static int comparePlayers(const void* a, const void* b);
+static void printFinalRanking(gameState_t* gameState);
+static const char * getPlayerColor(int playerIndex);
 
 typedef struct {
     player_t* player;
@@ -52,11 +53,15 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "Fallo en creacion de vista, argumentos: %s <nombre_shm>, %s <tamaño de bytes del gamestate>\n", argv[0], argv[1]);
         exit(EXIT_FAILURE);
     }
-    printf("¡Hola! Soy la VISTA con PID: %d\n", getpid());
+    //printf("¡Hola! Soy la VISTA con PID: %d\n", getpid());
     
     gameState_t* gameState;
     semaphores_t* semaphores;
     openShms(strtoul(argv[1], NULL, 10), strtoul(argv[2], NULL, 10), &gameState, &semaphores);
+
+    printf("\033[2J\033[H");    // limpiar pantalla
+    printf("\033[?25l");        // Ocultar cursor
+
 
     while (!gameState->finished) {
         sem_wait(&semaphores->masterToView);
@@ -75,8 +80,25 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
+
+static const char * getPlayerColor(int playerIndex) {
+    switch (playerIndex) {
+        case 0: return PLAYER1;
+        case 1: return PLAYER2;
+        case 2: return PLAYER3;
+        case 3: return PLAYER4;
+        case 4: return PLAYER5;
+        case 5: return PLAYER6;
+        case 6: return PLAYER7;
+        case 7: return PLAYER8;
+        case 8: return PLAYER9;
+        default: return RESET;
+    }
+}
+
 void printBoard(gameState_t * gameState) {
-    printf("\033[2J\033[H");    // limpiar pantalla
+    
+    printf("\033[H"); // Mover el cursor a la posición (0,0)
     for (int i = 0; i < gameState->height; i++) {
         for (int j = 0; j < gameState->width; j++) {
             bool isPlayer = false;
@@ -90,33 +112,11 @@ void printBoard(gameState_t * gameState) {
             }
             const char* color = RESET;
             if (isPlayer) {
-                switch (playerIdx) {
-                    case 0: color = PLAYER1; break;
-                    case 1: color = PLAYER2; break;
-                    case 2: color = PLAYER3; break;
-                    case 3: color = PLAYER4; break;
-                    case 4: color = PLAYER5; break;
-                    case 5: color = PLAYER6; break;
-                    case 6: color = PLAYER7; break;
-                    case 7: color = PLAYER8; break;
-                    case 8: color = PLAYER9; break;
-                    default: color = RESET; break;
-                }
+                color = getPlayerColor(playerIdx);
                 printf("%s ඞ%s ", color, RESET); // 2-width: Ñ + space
             } else {
                 int cellValue = gameState->board[i * gameState->width + j];
-                switch (cellValue) {
-                    case 0: color = PLAYER1; break;
-                    case -1: color = PLAYER2; break;
-                    case -2: color = PLAYER3; break;
-                    case -3: color = PLAYER4; break;
-                    case -4: color = PLAYER5; break;
-                    case -5: color = PLAYER6; break;
-                    case -6: color = PLAYER7; break;
-                    case -7: color = PLAYER8; break;
-                    case -8: color = PLAYER9; break;
-                    default: color = RESET; break;
-                }
+                color = getPlayerColor(cellValue*(-1));
                 if (cellValue > 0)
                     printf("%2d ", cellValue); // 2-width: num + space
                 else
@@ -161,19 +161,7 @@ void printFinalRanking(gameState_t* gameState) {
     printf("\n=== RANKING FINAL ===\n");
     
     for (int i = 0; i < gameState->playerCount; i++) {
-        const char* color;
-        switch (rankings[i].originalIndex) {
-            case 0: color = PLAYER1; break;
-            case 1: color = PLAYER2; break;
-            case 2: color = PLAYER3; break;
-            case 3: color = PLAYER4; break;
-            case 4: color = PLAYER5; break;
-            case 5: color = PLAYER6; break;
-            case 6: color = PLAYER7; break;
-            case 7: color = PLAYER8; break;
-            case 8: color = PLAYER9; break;
-            default: color = RESET; break;
-        }
+        const char* color = getPlayerColor(rankings[i].originalIndex);
         
         // Verificar si hay empate con el jugador anterior
         bool isEqual = i > 0 && 
@@ -191,6 +179,7 @@ void printFinalRanking(gameState_t* gameState) {
         printf("   Puntaje: %d\n", rankings[i].player->score);
         printf("   Movimientos válidos: %d\n", rankings[i].player->validReqs);
         printf("   Movimientos inválidos: %d\n", rankings[i].player->invalidReqs);
+        printf("   Bloqueado: %s\n", rankings[i].player->isBlocked? "Sí" : "No");
         printf("\n");
     }
 }

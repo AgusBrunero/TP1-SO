@@ -41,22 +41,6 @@ typedef struct pointStruct {
 } point_t;
 
 
-
-//valores entre [0,1], que se expresa como porcentaje de la dimension del board
-//El player i empieza en (spawnPoints[i].x * (width - 1), spawnPoints[i].y * (height - 1))
-static dPoint_t spawnPointsMult[MAXPLAYERS] = {
-{0, 0}, // Player 1 (esquina superior izquierda)
-    {1, 0}, // Player 2 (1 en numpad)
-    {0, 1}, // Player 3 (3 en numpad)
-    {1, 1}, // Player 4 (9 en numpad)
-    {0.5, 0.5}, // Player 5 (5 en numpad)
-    {0.5, 0}, // Player 6 (2 en numpad)
-    {0, 0.5}, // Player 7 (4 en numpad)
-    {1, 0.5}, // Player 8 (6 en numpad)
-    {0.5, 1}  // Player 9 (8 en numpad)
-};
-
-
 // Variables Globales
 
 static unsigned short width, height;
@@ -102,7 +86,13 @@ static pid_t newPipedProc(const char * binary, int pipe_fd, char * const argv[])
 /*
  * crea un nuevo punto de spawn para el jugador playerIndex
  */
-point_t static getSpawnPoint(int playerIndex, gameState_t * gamestate);
+static point_t getSpawnPoint(int playerIndex, gameState_t * gamestate);
+
+/*
+ * actualiza Blocked en cada player del gameState
+ */
+static void checkBlockedPlayers(gameState_t * gameState);
+
 /*
  * Crea un nuevo player_t inicializado con los parametros dados
  * binPath: path al binario del jugador
@@ -115,7 +105,9 @@ point_t static getSpawnPoint(int playerIndex, gameState_t * gamestate);
  */
 static player_t * playerFromBin(char * binPath, int intSuffix, unsigned short x, unsigned short y, char * widthStr, char * heightStr);
 
-
+/*  
+ * Libera todos los recursos utilizados por chompchamps
+ */
 static void freeResources();
 
 // Función para actualizar las coordenadas según la dirección
@@ -164,37 +156,41 @@ int main(int argc, char *argv[]) {
     while (!gameState->finished) {
         sem_wait(&semaphores->masterMutex); // Bloqueo a los jugadores al inicio del loop
         sem_wait(&semaphores->gameStateMutex); // Espero a que terminen los que ya estaban leyendo
-        
-        unsigned char nextMove = -1;
-        ssize_t bytesReaded = read(pipes[playerChecking][0], &nextMove, 1);
-        if (bytesReaded == -1) {
-            if (errno != EAGAIN && errno != EWOULDBLOCK) {
+
+        if (!gameState->playerArray[playerChecking].isBlocked){
+            unsigned char nextMove = -1;
+            ssize_t bytesReaded = read(pipes[playerChecking][0], &nextMove, 1);
+            if (bytesReaded == 1){
+                updatePlayerPosition(gameState ,&gameState->playerArray[playerChecking],playerChecking ,nextMove, gameState->width, gameState->height);
+                checkBlockedPlayers(gameState);
+                sem_post(&semaphores->playerSems[playerChecking]); // le aviso al jugador que puede mandar otro movimiento.
+
+                sem_post(&semaphores->gameStateMutex); // Liberar el estado para los jugadores (antes de hacer escribir a la vista)
+                sem_post(&semaphores->masterMutex);    
+
+                sem_post(&semaphores->masterToView);// si hubo cambios, notificar a la vista
+                sem_wait(&semaphores->viewToMaster);           
+            }else if (bytesReaded == -1){
                 perror("Error reading from pipe");
-                exit(EXIT_FAILURE);
+                exit(EXIT_FAILURE);          
+            }else if (bytesReaded == 0){
+                gameState->playerArray[playerChecking].isBlocked = true; // EOF -> Jugador bloqueado
+                sem_post(&semaphores->gameStateMutex); // Liberar el estado para los jugadores (antes de hacer escribir a la vista)
+                sem_post(&semaphores->masterMutex);  
             }
-        } else if (bytesReaded == 1) {
-            updatePlayerPosition(gameState ,&gameState->playerArray[playerChecking],playerChecking ,nextMove, gameState->width, gameState->height);
-            sem_post(&semaphores->playerSems[playerChecking]); // le aviso al jugador que puede mandar otro movimiento.
+        }else{
+            sem_post(&semaphores->gameStateMutex); // Liberar el estado para los jugadores
+            sem_post(&semaphores->masterMutex);             
         }
-
-        sem_post(&semaphores->gameStateMutex); // Liberar el estado para los jugadores
-        sem_post(&semaphores->masterMutex); 
-
-        if (bytesReaded == 1) { // si hubo cambios, notificar a la vista
-            sem_post(&semaphores->masterToView);
-            sem_wait(&semaphores->viewToMaster);
-        }
-
         if (++playerChecking >= gameState->playerCount) {
             playerChecking = 0;
         }
-
         usleep(delay * 1000); // Convertir delay a microsegundos
-
     }
+
+    sem_post(&semaphores->masterToView); // pedir a la vista imprimir el estado final del juego.
+    sem_wait(&semaphores->viewToMaster);   
     
-
-
     //aca wait escribe el codigo con el que termino el proceso hijo
     int status;
     //aca wait me retorna el pid del proceso que termino
@@ -333,7 +329,7 @@ static pid_t newPipedProc(const char * binary, int pipe_fd, char * const argv[])
     return pid;
 }
 
-point_t static getSpawnPoint(int playerIndex, gameState_t * gamestate) {
+static point_t getSpawnPoint(int playerIndex, gameState_t * gamestate) {
     
     srand(seed + playerIndex);
     point_t toReturn = {playerIndex, playerIndex}; // valor por defecto en caso de error
@@ -355,6 +351,45 @@ point_t static getSpawnPoint(int playerIndex, gameState_t * gamestate) {
     }
     gamestate->board[toReturn.y * gamestate->width + toReturn.x] = (-1) * playerIndex; // Comer la celda inicial
     return toReturn;
+}
+
+static void checkBlockedPlayers(gameState_t * gameState){
+    bool allBlocked = true;
+
+    for (int i = 0; i < gameState->playerCount; i++) {
+        player_t * player = &gameState->playerArray[i];
+        if (!player->isBlocked){
+            bool isBlocked = true;
+            unsigned short x = player->x;
+            unsigned short y = player->y;
+            int directions[8][2] = {
+                {0, -1},   // Norte
+                {1, -1},   // Noreste
+                {1, 0},    // Este
+                {1, 1},    // Sureste
+                {0, 1},    // Sur
+                {-1, 1},   // Suroeste
+                {-1, 0},   // Oeste
+                {-1, -1}   // Noroeste
+            };
+
+            for (int i = 0; i < 8 && isBlocked; i++) {
+                int xToTest = x + directions[i][0];
+                int yToTest = y + directions[i][1];
+
+                if (xToTest >= 0 && xToTest < gameState->width && yToTest >= 0 && yToTest < gameState->height) {
+                    if (gameState->board[yToTest * gameState->width + xToTest] > 0) {
+                        isBlocked = false;
+                        allBlocked = false;
+                        break; // No es necesario seguir verificando si ya encontramos una dirección válida
+                    }
+                }
+            }
+            player->isBlocked = isBlocked;
+        }
+    }
+    if (allBlocked) gameState->finished = true;
+
 }
 
 static player_t * playerFromBin(char * binPath, int intSuffix, unsigned short x, unsigned short y, char * widthStr, char * heightStr){

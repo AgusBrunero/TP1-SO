@@ -20,7 +20,4 @@ El trabajo práctico consiste en aprender a utilizar los distintos tipos de IPCs
 # TO-DO:
 - [ ] COMPLETAR freeResources con todos los free y funciones para liberar recursos de mallocs, memoria compartida, etc.
 - [ ] Manejar los tiempos de las demoras en vista y jugadores. (para monitorear según pide el enunciado y aplicar timeout en caso de ser necesario)
-- [ ] validación de movimientos y actualización de jugadores y tablero.
 - [ ] mostrar en vista el estado COMPLETO del juego (puntajes, posición, etc. según marca el enunciado) 
-- [ ] el master debe realizar chequeos de consistencia en los semáforos (ver enunciado)
-- [ ] manejo de solicitudes válidas en inválidas.
