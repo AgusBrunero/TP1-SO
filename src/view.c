@@ -61,15 +61,17 @@ int main(int argc, char* argv[]) {
     while (!gameState->finished) {
         sem_wait(&semaphores->masterToView);
         printBoard(gameState);
+        printFinalRanking(gameState);
         sem_post(&semaphores->viewToMaster);
+
     }
 
-<<<<<<< HEAD
+
     munmap(gameState, sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
     munmap(semaphores, sizeof(semaphores_t));
-=======
-    printFinalRanking(gameState);
->>>>>>> a4387f54d69e5fad1c2f967d92dc8ed39a0334b1
+
+    
+
     return 0;
 }
 
