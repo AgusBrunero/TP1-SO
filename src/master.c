@@ -55,12 +55,7 @@ static dPoint_t spawnPointsMult[MAXPLAYERS] = {
     {1, 0.5}, // Player 8 (6 en numpad)
     {0.5, 1}  // Player 9 (8 en numpad)
 };
-point_t static getSpawnPoint(int playerIndex, int boardWidth, int boardHeight) {
-    point_t point;
-    point.x = (unsigned short)(spawnPointsMult[playerIndex].x * (boardWidth - 1));
-    point.y = (unsigned short)(spawnPointsMult[playerIndex].y * (boardHeight - 1));
-    return point;
-}
+
 
 // Variables Globales
 
@@ -103,6 +98,11 @@ static pid_t newProc(const char * binary, char * const argv[]);
 */
 static pid_t newPipedProc(const char * binary, int pipe_fd, char * const argv[]);
 
+
+/*
+ * crea un nuevo punto de spawn para el jugador playerIndex
+ */
+point_t static getSpawnPoint(int playerIndex, gameState_t * gamestate);
 /*
  * Crea un nuevo player_t inicializado con los parametros dados
  * binPath: path al binario del jugador
@@ -119,7 +119,7 @@ static player_t * playerFromBin(char * binPath, int intSuffix, unsigned short x,
 static void freeResources();
 
 // Función para actualizar las coordenadas según la dirección
-static void updatePlayerPosition(player_t* player, unsigned char direccion, unsigned short width, unsigned short height);
+static void updatePlayerPosition(gameState_t* gamestate, player_t* player, int playerIndex, unsigned char direccion, unsigned short width, unsigned short height);
 
 int main(int argc, char *argv[]) {
 
@@ -160,6 +160,7 @@ int main(int argc, char *argv[]) {
 
     unsigned char playerChecking = 0 ; // indice del jugador a verificar 
 
+
     while (!gameState->finished) {
         sem_wait(&semaphores->masterMutex); // Bloqueo a los jugadores al inicio del loop
         sem_wait(&semaphores->gameStateMutex); // Espero a que terminen los que ya estaban leyendo
@@ -172,7 +173,7 @@ int main(int argc, char *argv[]) {
                 exit(EXIT_FAILURE);
             }
         } else if (bytesReaded == 1) {
-            updatePlayerPosition(&gameState->playerArray[playerChecking], nextMove, gameState->width, gameState->height);
+            updatePlayerPosition(gameState ,&gameState->playerArray[playerChecking],playerChecking ,nextMove, gameState->width, gameState->height);
             sem_post(&semaphores->playerSems[playerChecking]); // le aviso al jugador que puede mandar otro movimiento.
         }
 
@@ -189,6 +190,7 @@ int main(int argc, char *argv[]) {
         }
 
         usleep(delay * 1000); // Convertir delay a microsegundos
+
     }
     
 
@@ -212,6 +214,7 @@ int main(int argc, char *argv[]) {
     printf("Terminó master con PID: %d\n", getpid());
 
     freeResources();
+    munmap(gameState, sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
     destroySemaphores(semaphores);
 
     return 0;
@@ -226,7 +229,7 @@ static void gameStateInit (gameState_t * gameState, char* widthStr, char* height
     randomizeBoard(gameState->board, gameState->width, gameState->height, seed);
 
     for (int i = 0; i < playerCount; i++) {
-        point_t spawnPoint = getSpawnPoint(i, gameState->width, gameState->height);
+        point_t spawnPoint = getSpawnPoint(i, gameState);
         printf("%s\n", playerBins[i]);
         gameState->playerArray[i] = *playerFromBin(playerBins[i], i, spawnPoint.x, spawnPoint.y, widthStr, heightStr);
     }
@@ -280,13 +283,14 @@ static void destroySemaphores(semaphores_t *semaphores) {
     for (int i = 0; i < 9; i++) {
         sem_destroy(&semaphores->playerSems[i]);
     }
+    munmap(semaphores, sizeof(semaphores_t));
 }
 
 static void randomizeBoard(int* board, int width, int height, int seed) {
     srand(seed);
     for (int i = 0; i < height; i++) {
        for (int j = 0; j < width; j++) {
-            board[i * width + j] = rand() % 10; // Inicializar todas las celdas a 0
+            board[i * width + j] = rand() % 9 + 1; // Inicializar todas las celdas a 0
         }
     }
 }
@@ -329,6 +333,30 @@ static pid_t newPipedProc(const char * binary, int pipe_fd, char * const argv[])
     return pid;
 }
 
+point_t static getSpawnPoint(int playerIndex, gameState_t * gamestate) {
+    
+    srand(seed + playerIndex);
+    point_t toReturn = {playerIndex, playerIndex}; // valor por defecto en caso de error
+    point_t usedPoints[playerIndex-1];
+    for (int i = 0; i < playerIndex-1; i++) {
+        usedPoints[i].x = gamestate->playerArray[i].x;
+        usedPoints[i].y = gamestate->playerArray[i].y;
+    }
+    char used = 1;
+    while (used){
+        toReturn.x = (rand() % (gamestate->width-2)) + 1;   // +/-1 para evitar las esquinas
+        toReturn.y = (rand() % (gamestate->height-2)) + 1;
+        used = 0;
+        for(int i = 0; i < playerIndex; i++){
+            if (usedPoints[i].x == toReturn.x && usedPoints[i].y == toReturn.y){
+                used = 1;
+            }
+        }
+    }
+    gamestate->board[toReturn.y * gamestate->width + toReturn.x] = (-1) * playerIndex; // Comer la celda inicial
+    return toReturn;
+}
+
 static player_t * playerFromBin(char * binPath, int intSuffix, unsigned short x, unsigned short y, char * widthStr, char * heightStr){
     player_t * player = malloc(sizeof(player_t));
     checkMalloc(player, "malloc failed for player", EXIT_FAILURE);
@@ -353,45 +381,101 @@ static player_t * playerFromBin(char * binPath, int intSuffix, unsigned short x,
     return player;
 }
 
-void updatePlayerPosition(player_t* player, unsigned char direccion, unsigned short width, unsigned short height) {
+void updatePlayerPosition(gameState_t* gamestate, player_t* player, int playerIndex , unsigned char direccion, unsigned short width, unsigned short height) {
+    point_t newPosition = {player->x, player->y};
+    char isValid;
+
     switch(direccion) {
         case NORTH:
-            if (player->y > 0) player->y--;
+            if (newPosition.y > 0){
+                newPosition.y--;
+                isValid = 1;
+            }else{
+                isValid = 0;
+            }
             break;
         case NORTHEAST:
-            if (player->y > 0 && player->x < width-1) {
-                player->y--;
-                player->x++;
+            if (newPosition.y > 0 && newPosition.x < width-1) {
+                newPosition.y--;
+                newPosition.x++;
+                isValid = 1;
+            }else{
+                isValid = 0;
             }
             break;
         case EAST:
-            if (player->x < width-1) player->x++;
+            if (newPosition.x < width-1){
+                newPosition.x++;
+                isValid = 1;
+            }else{
+                isValid = 0;
+            }
             break;
         case SOUTHEAST:
-            if (player->y < height-1 && player->x < width-1) {
-                player->y++;
-                player->x++;
+            if (newPosition.y < height-1 && newPosition.x < width-1) {
+                newPosition.y++;
+                newPosition.x++;
+                isValid = 1;
+            }else{
+                isValid = 0;
             }
             break;
         case SOUTH:
-            if (player->y < height-1) player->y++;
+            if (newPosition.y < height-1) {
+                newPosition.y++;
+                isValid = 1;
+            }else{
+                isValid = 0;
+            }
             break;
         case SOUTHWEST:
-            if (player->y < height-1 && player->x > 0) {
-                player->y++;
-                player->x--;
+            if (newPosition.y < height-1 && newPosition.x > 0) {
+                newPosition.y++;
+                newPosition.x--;
+                isValid = 1;
+            }else{
+                isValid = 0;
             }
             break;
         case WEST:
-            if (player->x > 0) player->x--;
-            break;
-        case NORTHWEST:
-            if (player->y > 0 && player->x > 0) {
-                player->y--;
-                player->x--;
+            if (newPosition.x > 0) {
+                newPosition.x--;
+                isValid = 1;
+            }else{
+                isValid = 0;
             }
             break;
+        case NORTHWEST:
+            if (newPosition.y > 0 && newPosition.x > 0) {
+                newPosition.y--;
+                newPosition.x--;
+                isValid = 1;
+            }else{
+                isValid = 0;
+            }
+            break;
+        default:
+            isValid = 0;
+            break;
+
     }
+    
+    if (gamestate->board[newPosition.y * gamestate->width + newPosition.x] <= 0) {
+        isValid = 0; 
+    }
+
+    if(isValid){
+        player->x = newPosition.x;
+        player->y = newPosition.y;
+        player->validReqs++;
+        player->score += gamestate->board[player->y * gamestate->width + player->x];
+        gamestate->board[player->y * gamestate->width + player->x] = (-1) * playerIndex; // Comer la celda
+
+    }else{
+        player->invalidReqs++;
+    }
+
+
 }
 
 static void freeResources() {
@@ -399,12 +483,10 @@ static void freeResources() {
         if (pipes[i][0] != -1) close(pipes[i][0]);
         if (pipes[i][1] != -1) close(pipes[i][1]);
     }
-    /* LIBERAR MEMORIA COMPARTIDA
-    munmap(gameState, gameStateByteSize);
-    shm_unlink(gameStateShmName);
-    munmap(semaphores, semaphoresByteSize);
-    shm_unlink(semaphoresShmName);
-    */
-
-
+    if (shm_unlink("/game_state") == -1) {
+        perror("shm_unlink game_state");
+    }
+    if (shm_unlink("/game_sync") == -1) {
+        perror("shm_unlink game_sync");
+    }
 }

@@ -18,6 +18,7 @@
 
 
 unsigned char getNextMovement(gameState_t* gameState, int myIndex);
+
 void sendChar(unsigned char c);
 
 int main(int argc, char* argv[]) {
@@ -51,6 +52,9 @@ int main(int argc, char* argv[]) {
         sendChar(direction);
     }
     free(savedGameState);
+
+    munmap(gameState, sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
+    munmap(semaphores, sizeof(semaphores_t));
     return 0;
 }
 

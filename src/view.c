@@ -59,6 +59,8 @@ int main(int argc, char* argv[]) {
         sem_post(&semaphores->viewToMaster);
     }
 
+    munmap(gameState, sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
+    munmap(semaphores, sizeof(semaphores_t));
     return 0;
 }
 
@@ -75,8 +77,8 @@ void printBoard(gameState_t * gameState) {
                     break;
                 }
             }
+            const char* color = RESET;
             if (isPlayer) {
-                const char* color = RESET;
                 switch (playerIdx) {
                     case 0: color = PLAYER1; break;
                     case 1: color = PLAYER2; break;
@@ -92,7 +94,22 @@ void printBoard(gameState_t * gameState) {
                 printf("%s ඞ%s ", color, RESET); // 2-width: Ñ + space
             } else {
                 int cellValue = gameState->board[i * gameState->width + j];
-                printf("%2d ", cellValue); // 2-width: num + space
+                switch (cellValue) {
+                    case 0: color = PLAYER1; break;
+                    case -1: color = PLAYER2; break;
+                    case -2: color = PLAYER3; break;
+                    case -3: color = PLAYER4; break;
+                    case -4: color = PLAYER5; break;
+                    case -5: color = PLAYER6; break;
+                    case -6: color = PLAYER7; break;
+                    case -7: color = PLAYER8; break;
+                    case -8: color = PLAYER9; break;
+                    default: color = RESET; break;
+                }
+                if (cellValue > 0)
+                    printf("%2d ", cellValue); // 2-width: num + space
+                else
+                    printf("%s ■%s ", color, RESET);
             }
         }
         printf("\n");
