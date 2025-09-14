@@ -35,11 +35,16 @@
 #define PLAYER8 "\033[33m"  // Amarillo normal
 #define PLAYER9 "\033[35m"  // Magenta normal
 
+#define MAX_PLAYERS 9
+
 void printBoard(gameState_t * gameState);
+int comparePlayers(const void* a, const void* b);
+void printFinalRanking(gameState_t* gameState);
 
-
-// argv[1] = widht
-// argv[2] = height
+typedef struct {
+    player_t* player;
+    int originalIndex;
+} PlayerRank;
 
 int main(int argc, char* argv[]) {
 
@@ -59,6 +64,7 @@ int main(int argc, char* argv[]) {
         sem_post(&semaphores->viewToMaster);
     }
 
+    printFinalRanking(gameState);
     return 0;
 }
 
@@ -95,6 +101,74 @@ void printBoard(gameState_t * gameState) {
                 printf("%2d ", cellValue); // 2-width: num + space
             }
         }
+        printf("\n");
+    }
+}
+
+int comparePlayers(const void* a, const void* b) {
+    const PlayerRank* p1 = (const PlayerRank*)a;
+    const PlayerRank* p2 = (const PlayerRank*)b;
+    
+    // Comparar por puntaje (mayor a menor)
+    if (p2->player->score != p1->player->score) {
+        return p2->player->score - p1->player->score;
+    }
+    
+    // Si hay empate, comparar por movimientos válidos (menor a mayor)
+    if (p1->player->validReqs != p2->player->validReqs) {
+        return p1->player->validReqs - p2->player->validReqs;
+    }
+    
+    // Si persiste el empate, comparar por movimientos inválidos (menor a mayor)
+    return p1->player->invalidReqs - p2->player->invalidReqs;
+}
+
+void printFinalRanking(gameState_t* gameState) {
+    PlayerRank rankings[MAX_PLAYERS];
+    
+    // Inicializar el array de rankings
+    for (int i = 0; i < gameState->playerCount; i++) {
+        rankings[i].player = &gameState->playerArray[i];
+        rankings[i].originalIndex = i;
+    }
+    
+    // Ordenar jugadores
+    qsort(rankings, gameState->playerCount, sizeof(PlayerRank), comparePlayers);
+    
+    // Imprimir resultados
+    printf("\n=== RANKING FINAL ===\n");
+    
+    for (int i = 0; i < gameState->playerCount; i++) {
+        const char* color;
+        switch (rankings[i].originalIndex) {
+            case 0: color = PLAYER1; break;
+            case 1: color = PLAYER2; break;
+            case 2: color = PLAYER3; break;
+            case 3: color = PLAYER4; break;
+            case 4: color = PLAYER5; break;
+            case 5: color = PLAYER6; break;
+            case 6: color = PLAYER7; break;
+            case 7: color = PLAYER8; break;
+            case 8: color = PLAYER9; break;
+            default: color = RESET; break;
+        }
+        
+        // Verificar si hay empate con el jugador anterior
+        bool isEqual = i > 0 && 
+                      rankings[i].player->score == rankings[i-1].player->score &&
+                      rankings[i].player->validReqs == rankings[i-1].player->validReqs &&
+                      rankings[i].player->invalidReqs == rankings[i-1].player->invalidReqs;
+        
+        printf("%s%d%s. %s%s%s\n", 
+               color,
+               isEqual ? i : i + 1,  // Si hay empate, usar la misma posición
+               RESET,
+               color,
+               rankings[i].player->name,
+               RESET);
+        printf("   Puntaje: %d\n", rankings[i].player->score);
+        printf("   Movimientos válidos: %d\n", rankings[i].player->validReqs);
+        printf("   Movimientos inválidos: %d\n", rankings[i].player->invalidReqs);
         printf("\n");
     }
 }
