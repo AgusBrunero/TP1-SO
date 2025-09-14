@@ -7,6 +7,5 @@
 /dataSources/
 /dataSources.local.xml
 /.vscode/
-./bin/view
-./bin/master
-./bin/player
+/bin/
+/obj/
