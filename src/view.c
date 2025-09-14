@@ -99,6 +99,7 @@ static const char * getPlayerColor(int playerIndex) {
 void printBoard(gameState_t * gameState) {
     
     printf("\033[H"); // Mover el cursor a la posición (0,0)
+    printf("CHOMPCHAMPS: Mapa %dx%d | Estado: %s\n\n", gameState->width, gameState->height, gameState->finished ? "Finalizado" : "En juego");
     for (int i = 0; i < gameState->height; i++) {
         for (int j = 0; j < gameState->width; j++) {
             bool isPlayer = false;
@@ -127,6 +128,8 @@ void printBoard(gameState_t * gameState) {
     }
 }
 
+
+
 int comparePlayers(const void* a, const void* b) {
     const PlayerRank* p1 = (const PlayerRank*)a;
     const PlayerRank* p2 = (const PlayerRank*)b;
@@ -147,39 +150,54 @@ int comparePlayers(const void* a, const void* b) {
 
 void printFinalRanking(gameState_t* gameState) {
     PlayerRank rankings[MAX_PLAYERS];
-    
+
     // Inicializar el array de rankings
     for (int i = 0; i < gameState->playerCount; i++) {
         rankings[i].player = &gameState->playerArray[i];
         rankings[i].originalIndex = i;
     }
-    
+
     // Ordenar jugadores
     qsort(rankings, gameState->playerCount, sizeof(PlayerRank), comparePlayers);
-    
+
     // Imprimir resultados
     printf("\n=== RANKING FINAL ===\n");
-    
+
+    // Calculate max width for player names
+    int nameWidth = 0;
+    for (int i = 0; i < gameState->playerCount; i++) {
+        int len = strlen(rankings[i].player->name);
+        if (len > nameWidth) nameWidth = len;
+    }
+    if (nameWidth < 4) nameWidth = 4; // Minimum width for aesthetics
+    nameWidth += 2; // Padding
+
+    // Imprimir nombres en una sola línea, separados por |
+    printf("Jugador:    ");
     for (int i = 0; i < gameState->playerCount; i++) {
         const char* color = getPlayerColor(rankings[i].originalIndex);
-        
-        // Verificar si hay empate con el jugador anterior
-        bool isEqual = i > 0 && 
-                      rankings[i].player->score == rankings[i-1].player->score &&
-                      rankings[i].player->validReqs == rankings[i-1].player->validReqs &&
-                      rankings[i].player->invalidReqs == rankings[i-1].player->invalidReqs;
-        
-        printf("%s%d%s. %s%s%s\n", 
-               color,
-               isEqual ? i : i + 1,  // Si hay empate, usar la misma posición
-               RESET,
-               color,
-               rankings[i].player->name,
-               RESET);
-        printf("   Puntaje: %d\n", rankings[i].player->score);
-        printf("   Movimientos válidos: %d\n", rankings[i].player->validReqs);
-        printf("   Movimientos inválidos: %d\n", rankings[i].player->invalidReqs);
-        printf("   Bloqueado: %s\n", rankings[i].player->isBlocked? "Sí" : "No");
-        printf("\n");
+        printf("%s%-*s%s", color, nameWidth, rankings[i].player->name, RESET);
+        if (i < gameState->playerCount - 1) printf(" | ");
     }
+    printf("\nPuntaje:    ");
+    for (int i = 0; i < gameState->playerCount; i++) {
+        printf("%*d", nameWidth, rankings[i].player->score);
+        if (i < gameState->playerCount - 1) printf(" | ");
+    }
+    printf("\nVálidos:    ");
+    for (int i = 0; i < gameState->playerCount; i++) {
+        printf("%*d", nameWidth, rankings[i].player->validReqs);
+        if (i < gameState->playerCount - 1) printf(" | ");
+    }
+    printf("\nInválidos:  ");
+    for (int i = 0; i < gameState->playerCount; i++) {
+        printf("%*d", nameWidth, rankings[i].player->invalidReqs);
+        if (i < gameState->playerCount - 1) printf(" | ");
+    }
+    printf("\nBloqueado:  ");
+    for (int i = 0; i < gameState->playerCount; i++) {
+        printf("%*s", nameWidth, rankings[i].player->isBlocked ? "Sí" : "No");
+        if (i < gameState->playerCount - 1) printf(" | ");
+    }
+    printf("\n\n");
 }

@@ -11,6 +11,8 @@ unsigned char getNextMovement(gameState_t* gameState, int myIndex);
 
 void sendChar(unsigned char c);
 
+char getX(char direction);
+char getY(char direction);
 int main(int argc, char* argv[]) {
     srand(time(NULL));
     gameState_t* gameState;
@@ -53,7 +55,6 @@ void sendChar(unsigned char c) {
 }
 
 
-// DEFINIR EN UN ARCHIVO APARTE
 unsigned char getNextMovement(gameState_t* gameState, int myIndex){
     unsigned short x = gameState->playerArray[myIndex].x;
     unsigned short y = gameState->playerArray[myIndex].y;
@@ -62,41 +63,83 @@ unsigned char getNextMovement(gameState_t* gameState, int myIndex){
     int num_direcciones = 0;
     
     // Norte
-    if (y > 0 && gameState->board[y-1 * gameState->width + x] == 1)
+    if (y > 0 && gameState->board[y-1 * gameState->width + x])
         direcciones_validas[num_direcciones++] = NORTH;
     
     // Noreste
-    if (y > 0 && x < gameState->width-1 && gameState->board[(y-1) * gameState->width + (x+1)] == 1)
+    if (y > 0 && x < gameState->width-1 && gameState->board[(y-1) * gameState->width + (x+1)])
         direcciones_validas[num_direcciones++] = NORTHEAST;
     
     // Este
-    if (x < gameState->width-1 && gameState->board[y * gameState->width + (x+1)] == 1)
+    if (x < gameState->width-1 && gameState->board[y * gameState->width + (x+1)])
         direcciones_validas[num_direcciones++] = EAST;
     
     // Sureste
-    if (y < gameState->height-1 && x < gameState->width-1 && gameState->board[(y+1) * gameState->width + (x+1)] == 1)
+    if (y < gameState->height-1 && x < gameState->width-1 && gameState->board[(y+1) * gameState->width + (x+1)])
         direcciones_validas[num_direcciones++] = SOUTHEAST;
     
     // Sur
-    if (y < gameState->height-1 && gameState->board[(y+1) * gameState->width + x] == 1)
+    if (y < gameState->height-1 && gameState->board[(y+1) * gameState->width + x])
         direcciones_validas[num_direcciones++] = SOUTH;
     
     // Suroeste
-    if (y < gameState->height-1 && x > 0 && gameState->board[(y+1) * gameState->width + (x-1)] == 1)
+    if (y < gameState->height-1 && x > 0 && gameState->board[(y+1) * gameState->width + (x-1)])
         direcciones_validas[num_direcciones++] = SOUTHWEST;
     
     // Oeste
-    if (x > 0 && gameState->board[y * gameState->width + (x-1)] == 1)
+    if (x > 0 && gameState->board[y * gameState->width + (x-1)])
         direcciones_validas[num_direcciones++] = WEST;
     
     // Noroeste
-    if (y > 0 && x > 0 && gameState->board[(y-1) * gameState->width + (x-1)] == 1)
+    if (y > 0 && x > 0 && gameState->board[(y-1) * gameState->width + (x-1)])
         direcciones_validas[num_direcciones++] = NORTHWEST;
     
-    // Si no hay direcciones válidas, retornar una dirección aleatoria
-    if (num_direcciones == 0)
-        return rand() % 8;
-    
+
+    char bestX = 0;
+    char bestY = 0;
+    char bestValue = 0;
+    for (char i = 0 ; i < num_direcciones ; i++){
+        char newBestX = getX(direcciones_validas[i]);
+        char newBestY = getY(direcciones_validas[i]);
+        if (gameState->board[gameState->width * (y + newBestY) + x + newBestX] > bestValue){
+            bestX = newBestX;
+            bestY = newBestY;
+        }
+    }
+
+    char move [3][3] = {{0, 1, 2}, {7, -1, 3}, {6, 5, 4}};
+    return move[bestX][bestY];
     // Seleccionar una dirección válida aleatoria
-    return direcciones_validas[rand() % num_direcciones];
+    //return direcciones_validas[rand() % num_direcciones];
+}
+
+
+char getX(char direction){
+    switch (direction){
+        case EAST:  
+        case NORTHEAST:
+        case SOUTHEAST:
+            return 1;
+        case WEST: 
+        case NORTHWEST:
+        case SOUTHWEST:
+            return -1;
+        default:
+            return 0;
+    }
+}
+
+char getY(char direction){
+    switch (direction){
+        case NORTH:  
+        case NORTHEAST:
+        case NORTHWEST:
+            return -1;
+        case SOUTH: 
+        case SOUTHEAST:
+        case SOUTHWEST:
+            return -1;
+        default:
+            return 0;
+    }
 }
