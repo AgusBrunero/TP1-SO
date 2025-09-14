@@ -7,16 +7,6 @@
 #include "defs.h"
 #include "chompChampsUtils.h"
 
-#define NORTH 0
-#define NORTHEAST 1
-#define EAST 2
-#define SOUTHEAST 3
-#define SOUTH 4
-#define SOUTHWEST 5
-#define WEST 6
-#define NORTHWEST 7
-
-
 unsigned char getNextMovement(gameState_t* gameState, int myIndex);
 
 void sendChar(unsigned char c);

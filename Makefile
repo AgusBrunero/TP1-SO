@@ -4,8 +4,11 @@ LDFLAGS = -pthread -lrt
 SRC_DIR = src
 BIN_DIR = bin
 OBJ_DIR = obj
+PLAYERS_SRC := $(wildcard src/playersIA/*.c)
+PLAYERS_BIN := $(patsubst src/playersIA/%.c, $(BIN_DIR)/%, $(PLAYERS_SRC))
 TESTS_SRC = $(wildcard tests/*.c)
 TESTS_BIN = $(BIN_DIR)/tests
+
 
 # Crear directorios necesarios
 $(shell mkdir -p $(BIN_DIR) $(OBJ_DIR))
@@ -30,6 +33,12 @@ $(BIN_DIR)/player: $(SRC_DIR)/player.c $(SRC_DIR)/defs.h $(UTILS_OBJ)
 
 $(BIN_DIR)/view: $(SRC_DIR)/view.c $(SRC_DIR)/defs.h $(UTILS_OBJ)
 	$(CC) $(CFLAGS) -o $@ $(SRC_DIR)/view.c $(UTILS_OBJ) $(LDFLAGS)
+
+
+players: $(PLAYERS_BIN)
+$(BIN_DIR)/%: src/playersIA/%.c $(SRC_DIR)/player.c $(SRC_DIR)/defs.h $(UTILS_OBJ)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	chmod +x $@
 
 tests: $(TESTS_BIN)
 

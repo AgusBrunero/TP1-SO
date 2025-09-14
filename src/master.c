@@ -16,15 +16,6 @@
 #include <fcntl.h>       // O_CREAT, O_RDWR, O_TRUNC
 #include <unistd.h>      // ftruncate, close
 
-#define NORTH 0
-#define NORTHEAST 1
-#define EAST 2
-#define SOUTHEAST 3
-#define SOUTH 4
-#define SOUTHWEST 5
-#define WEST 6
-#define NORTHWEST 7
-
 #define MAXPLAYERS 9
 #define MAXPATHLEN 256
 #define ARGLEN 8
