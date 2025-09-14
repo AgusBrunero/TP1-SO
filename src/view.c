@@ -71,11 +71,8 @@ int main(int argc, char* argv[]) {
 
     }
 
-
     munmap(gameState, sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
     munmap(semaphores, sizeof(semaphores_t));
-
-    
 
     return 0;
 }

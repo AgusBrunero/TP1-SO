@@ -11,8 +11,8 @@ unsigned char getNextMovement(gameState_t* gameState, int myIndex);
 
 void sendChar(unsigned char c);
 
-char getX(char direction);
-char getY(char direction);
+char getX(unsigned char direction);
+char getY(unsigned char direction);
 int main(int argc, char* argv[]) {
     srand(time(NULL));
     gameState_t* gameState;
@@ -95,10 +95,10 @@ unsigned char getNextMovement(gameState_t* gameState, int myIndex){
         direcciones_validas[num_direcciones++] = NORTHWEST;
     
 
-    char bestX = 0;
-    char bestY = 0;
-    char bestValue = 0;
-    for (char i = 0 ; i < num_direcciones ; i++){
+    int bestX = 0;
+    int bestY = 0;
+    int bestValue = 0;
+    for (int i = 0 ; i < num_direcciones ; i++){
         char newBestX = getX(direcciones_validas[i]);
         char newBestY = getY(direcciones_validas[i]);
         if (gameState->board[gameState->width * (y + newBestY) + x + newBestX] > bestValue){
@@ -106,15 +106,15 @@ unsigned char getNextMovement(gameState_t* gameState, int myIndex){
             bestY = newBestY;
         }
     }
+    char move [3][3] = {{1, 2, 3},
+                        {8, 0, 4},
+                        {7, 6, 5}};
 
-    char move [3][3] = {{0, 1, 2}, {7, -1, 3}, {6, 5, 4}};
     return move[bestX][bestY];
-    // Seleccionar una dirección válida aleatoria
-    //return direcciones_validas[rand() % num_direcciones];
 }
 
 
-char getX(char direction){
+char getX(unsigned char direction){
     switch (direction){
         case EAST:  
         case NORTHEAST:
@@ -129,7 +129,7 @@ char getX(char direction){
     }
 }
 
-char getY(char direction){
+char getY(unsigned char direction){
     switch (direction){
         case NORTH:  
         case NORTHEAST:
@@ -138,7 +138,7 @@ char getY(char direction){
         case SOUTH: 
         case SOUTHEAST:
         case SOUTHWEST:
-            return -1;
+            return 1;
         default:
             return 0;
     }
