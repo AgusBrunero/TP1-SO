@@ -142,7 +142,8 @@ int main(int argc, char *argv[]) {
     char* seedStr = getParam("-s", argv, argc);
     seedStr = seedStr ? seedStr : DEFAULTSEED;
 
-    char * viewBinary = getParam("-v",argv,argc); 
+    char * viewBinary = getParam("-v",argv,argc);
+    
     char * playersBinaries [MAXPLAYERS] = {0};
     int playersParamIndex = 0;
     while (playersParamIndex++ < argc){
@@ -154,21 +155,12 @@ int main(int argc, char *argv[]) {
         printf ("ERROR: El juego necesita entre 1 y 9 jugadores");
     }
 
-    printf("p: %d\n", playersParamIndex);
-
     for (int i = 0 ; i < playersCount ; i++){
         playersBinaries[i] = argv[playersParamIndex+i];
-        printf("p%d: %s\n",i,playersBinaries[i]);
     }
     
-
-
     // recepción de parámetros
     printf("Master PID: %d\n", getpid());
- 
-
-    
-    
 
     width = strtoul(widthStr, NULL, 10);
     height = strtoul(heightStr, NULL, 10);
@@ -259,7 +251,6 @@ int main(int argc, char *argv[]) {
         } 
 
     }
-    
     
     if (viewBinary){
         sem_post(&semaphores->masterToView); // notificar a la vista que hubo cambios
