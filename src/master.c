@@ -586,11 +586,7 @@ static char* getParam( const char* flag, char* argv[], int argc) {
     return NULL;
 }
 
-
 static void freeResources(gameState_t * gameState, semaphores_t * semaphores) {
-    for (int i=0 ; i < gameState->playerCount ; i++){
-        free(&(gameState->playerArray[i]));
-    }
 
     for (int i = 0; i < 9; i++) {
         if (pipes[i][0] != -1) close(pipes[i][0]);
