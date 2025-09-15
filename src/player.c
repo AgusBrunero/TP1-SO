@@ -11,8 +11,8 @@ unsigned char getNextMovement(gameState_t* gameState, int myIndex);
 
 void sendChar(unsigned char c);
 
-char getX(unsigned char direction);
-char getY(unsigned char direction);
+short getX(unsigned char direction);
+short getY(unsigned char direction);
 int main(int argc, char* argv[]) {
     srand(time(NULL));
     gameState_t* gameState;
@@ -38,9 +38,9 @@ int main(int argc, char* argv[]) {
     }
 
     while (!gameState->finished) {
+        sem_wait(&semaphores->playerSems[myIndex]);
         getGameState(gameState, semaphores, savedGameState);
         unsigned char direction = getNextMovement(savedGameState, myIndex);
-        sem_wait(&semaphores->playerSems[myIndex]);
         sendChar(direction);
     }
     free(savedGameState);
@@ -58,63 +58,54 @@ void sendChar(unsigned char c) {
 unsigned char getNextMovement(gameState_t* gameState, int myIndex){
     unsigned short x = gameState->playerArray[myIndex].x;
     unsigned short y = gameState->playerArray[myIndex].y;
-    
+
     unsigned char direcciones_validas[8];
     int num_direcciones = 0;
-    
-    // Norte
-    if (y > 0 && gameState->board[y-1 * gameState->width + x])
+
+    if (y > 0)
         direcciones_validas[num_direcciones++] = NORTH;
-    
-    // Noreste
-    if (y > 0 && x < gameState->width-1 && gameState->board[(y-1) * gameState->width + (x+1)])
-        direcciones_validas[num_direcciones++] = NORTHEAST;
-    
-    // Este
-    if (x < gameState->width-1 && gameState->board[y * gameState->width + (x+1)])
+    if (y < (gameState->height - 1))
+        direcciones_validas[num_direcciones++] = SOUTH;
+    if (x > 0)
+        direcciones_validas[num_direcciones++] = WEST;
+    if (x < (gameState->width - 1))
         direcciones_validas[num_direcciones++] = EAST;
-    
-    // Sureste
-    if (y < gameState->height-1 && x < gameState->width-1 && gameState->board[(y+1) * gameState->width + (x+1)])
+    if (y > 0 && x > 0)
+        direcciones_validas[num_direcciones++] = NORTHWEST;
+    if (y > 0 && x < (gameState->width - 1))
+        direcciones_validas[num_direcciones++] = NORTHEAST;
+    if (y < (gameState->height - 1) && x > 0)
+        direcciones_validas[num_direcciones++] = SOUTHWEST;
+    if (y < (gameState->height - 1) && x < (gameState->width - 1))
         direcciones_validas[num_direcciones++] = SOUTHEAST;
     
-    // Sur
-    if (y < gameState->height-1 && gameState->board[(y+1) * gameState->width + x])
-        direcciones_validas[num_direcciones++] = SOUTH;
-    
-    // Suroeste
-    if (y < gameState->height-1 && x > 0 && gameState->board[(y+1) * gameState->width + (x-1)])
-        direcciones_validas[num_direcciones++] = SOUTHWEST;
-    
-    // Oeste
-    if (x > 0 && gameState->board[y * gameState->width + (x-1)])
-        direcciones_validas[num_direcciones++] = WEST;
-    
-    // Noroeste
-    if (y > 0 && x > 0 && gameState->board[(y-1) * gameState->width + (x-1)])
-        direcciones_validas[num_direcciones++] = NORTHWEST;
-    
+    short bestX = 0;
+    short bestY = 0;
+    short bestValue = -10;
 
-    int bestX = 0;
-    int bestY = 0;
-    int bestValue = 0;
     for (int i = 0 ; i < num_direcciones ; i++){
-        char newBestX = getX(direcciones_validas[i]);
-        char newBestY = getY(direcciones_validas[i]);
-        if (gameState->board[gameState->width * (y + newBestY) + x + newBestX] > bestValue){
-            bestX = newBestX;
-            bestY = newBestY;
+        short newX = getX(direcciones_validas[i]);
+        short newY = getY(direcciones_validas[i]);
+        short newValue = gameState->board[gameState->width * (y + newY) + x + newX];
+        if (newValue > bestValue){
+            bestX = newX;
+            bestY = newY;
+            bestValue = newValue;
         }
     }
-    char move [3][3] = {{1, 2, 3},
-                        {8, 0, 4},
-                        {7, 6, 5}};
-
-    return move[bestX][bestY];
+    unsigned char move [3][3] ={{NORTHWEST  , NORTH , NORTHEAST },
+                                {WEST       , 254   , EAST      },
+                                {SOUTHWEST  , SOUTH , SOUTHEAST }};  
+                                
+    
+    return move[1 + bestY][1 + bestX];
+    
 }
 
 
-char getX(unsigned char direction){
+
+
+short getX(unsigned char direction){
     switch (direction){
         case EAST:  
         case NORTHEAST:
@@ -124,12 +115,14 @@ char getX(unsigned char direction){
         case NORTHWEST:
         case SOUTHWEST:
             return -1;
+        case NORTH:
+        case SOUTH:
         default:
             return 0;
     }
 }
 
-char getY(unsigned char direction){
+short getY(unsigned char direction){
     switch (direction){
         case NORTH:  
         case NORTHEAST:
@@ -139,6 +132,8 @@ char getY(unsigned char direction){
         case SOUTHEAST:
         case SOUTHWEST:
             return 1;
+        case EAST:
+        case WEST:
         default:
             return 0;
     }

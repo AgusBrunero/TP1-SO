@@ -193,8 +193,12 @@ void printFinalRanking(gameState_t* gameState) {
     }
     printf("\nBloqueado:  ");
     for (int i = 0; i < gameState->playerCount; i++) {
-        printf("%*s", nameWidth, rankings[i].player->isBlocked ? "Sí" : "No");
+        printf("%*s", nameWidth, rankings[i].player->isBlocked ? "Si" : "No");
         if (i < gameState->playerCount - 1) printf(" | ");
     }
+
+
+
+
     printf("\n\n");
 }
