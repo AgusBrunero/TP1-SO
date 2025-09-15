@@ -18,7 +18,7 @@ UTILS_OBJ = $(OBJ_DIR)/chompChampsUtils.o
 
 all: $(BIN_DIR)/master $(BIN_DIR)/player $(BIN_DIR)/view
 	chmod +x $(BIN_DIR)/master $(BIN_DIR)/player $(BIN_DIR)/view
-	@echo "\n\033[33mPara correr el programa hacer:\n./run <FILAS> <COLUMNAS> <DELAY> <TURNOS> <SEED>\033[0m"
+	@echo "\n\033[33mPara correr el programa hacer:\n./run <FILAS> <COLUMNAS> <DELAY> <TIMEOUT> <SEED>\033[0m"
 
 # Regla para compilar la librería como archivo objeto
 $(UTILS_OBJ): $(SRC_DIR)/chompChampsUtils.c $(SRC_DIR)/chompChampsUtils.h $(SRC_DIR)/defs.h
