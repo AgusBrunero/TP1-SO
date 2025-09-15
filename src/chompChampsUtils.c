@@ -14,7 +14,10 @@
 #include <sys/shm.h>     // shm_open, shm_unlink
 #include <fcntl.h>       // O_CREAT, O_RDWR, O_TRUNC
 #include <unistd.h>      // ftruncate, close
-    
+
+void cleanupShm(const char* name) {
+    shm_unlink(name);
+}
 
 void getGameState(gameState_t* gameState, semaphores_t* semaphores, gameState_t* gameStateBuffer) {
 
@@ -38,9 +41,11 @@ void getGameState(gameState_t* gameState, semaphores_t* semaphores, gameState_t*
 
 
 void createShms(unsigned short width, unsigned short height) {
+    cleanupShm("/game_state");
+    cleanupShm("/game_sync");
     // Crear memoria compartida para gameState
     size_t gameStateByteSize = sizeof(gameState_t) + width * height * sizeof(int);
-    int gameStateShmFd = shm_open("/game_state", O_CREAT | O_RDWR | O_TRUNC, 0666);
+    int gameStateShmFd = shm_open("/game_state", O_CREAT | O_RDWR | O_TRUNC, 0777);
     if (gameStateShmFd == -1) {
         perror("shm_open (create) game_state");
         exit(EXIT_FAILURE);
@@ -54,7 +59,7 @@ void createShms(unsigned short width, unsigned short height) {
 
     // Crear memoria compartida para semaphores
     size_t semaphoresByteSize = sizeof(semaphores_t);
-    int semaphoresShmFd = shm_open("/game_sync", O_CREAT | O_RDWR | O_TRUNC, 0666);
+    int semaphoresShmFd = shm_open("/game_sync", O_CREAT | O_RDWR | O_TRUNC, 0777);
     if (semaphoresShmFd == -1) {
         perror("shm_open (create) game_sync");
         exit(EXIT_FAILURE);

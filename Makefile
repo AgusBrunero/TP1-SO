@@ -35,6 +35,13 @@ $(BIN_DIR)/view: $(SRC_DIR)/view.c $(SRC_DIR)/defs.h $(UTILS_OBJ)
 	$(CC) $(CFLAGS) -o $@ $(SRC_DIR)/view.c $(UTILS_OBJ) $(LDFLAGS)
 
 tests: $(TESTS_BIN)
+memcheck: all
+	valgrind --leak-check=full \
+			 --show-leak-kinds=all \
+			 --track-origins=yes \
+			 --verbose \
+			 --log-file=valgrind-out.txt \
+			 ./run 20 20 20 40 123
 
 $(TESTS_BIN): $(TESTS_SRC) $(UTILS_OBJ)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
