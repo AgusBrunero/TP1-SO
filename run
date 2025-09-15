@@ -7,4 +7,4 @@ if [ $# -ne 5 ]; then
 fi
 
 # Ejecuta el master con los argumentos recibidos
-./bin/master "$1" "$2" "$3" "$4" "$5" ./bin/view ./bin/player ./bin/player ./bin/player
+./bin/master -w "$1" -h "$2" -d "$3" -t "$4" -s "$5" -v ./bin/view -p ./bin/player ./bin/player ./bin/player
