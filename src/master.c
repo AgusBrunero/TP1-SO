@@ -127,6 +127,7 @@ static char* getParam( const char* flag, char* argv[], int argc);
 
 int main(int argc, char *argv[]) {
 
+    // recepción de parámetros
     char* widthStr = getParam("-w", argv, argc);
     widthStr = widthStr ? widthStr : DEFAULTWIDTH;
     
@@ -159,7 +160,6 @@ int main(int argc, char *argv[]) {
         playersBinaries[i] = argv[playersParamIndex+i];
     }
     
-    // recepción de parámetros
     printf("Master PID: %d\n", getpid());
 
     width = strtoul(widthStr, NULL, 10);
@@ -168,7 +168,6 @@ int main(int argc, char *argv[]) {
     timeout = strtoul(timeoutStr, NULL, 10);
     seed = strtol(seedStr, NULL, 10);
     savedTime = getTimeMs();
-
 
     // creación memorias compartidas
     createShms(width, height);
@@ -191,7 +190,6 @@ int main(int argc, char *argv[]) {
         sem_post(&semaphores->masterToView); 
         sem_wait(&semaphores->viewToMaster);
     }
-
 
     unsigned char playerChecking = 0 ;
 
