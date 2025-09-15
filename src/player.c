@@ -7,12 +7,17 @@
 #include "defs.h"
 #include "chompChampsUtils.h"
 
+/*
+ * Decide el siguiente movimiento a partir del estado del juego
+ */
 unsigned char getNextMovement(gameState_t* gameState, int myIndex);
 
 void sendChar(unsigned char c);
 
 short getX(unsigned char direction);
+
 short getY(unsigned char direction);
+
 int main(int argc, char* argv[]) {
     srand(time(NULL));
     gameState_t* gameState;
@@ -101,9 +106,6 @@ unsigned char getNextMovement(gameState_t* gameState, int myIndex){
     return move[1 + bestY][1 + bestX];
     
 }
-
-
-
 
 short getX(unsigned char direction){
     switch (direction){

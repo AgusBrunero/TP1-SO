@@ -27,6 +27,7 @@ typedef struct doublePointStruct {
     double x;
     double y;
 } dPoint_t;
+
 typedef struct pointStruct {
     unsigned short x;
     unsigned short y;
@@ -39,7 +40,7 @@ static unsigned short width, height;
 static unsigned int timeout, delay;
 static int seed;
 static int pipes[MAXPLAYERS][2];
-static long savedTime;
+static long long savedTime;
 
 
 // Prototipos de funciones
@@ -50,7 +51,7 @@ static long savedTime;
 static void semaphoresInit(semaphores_t * semaphores);
 
 /*
- * Inicializa el estado del juego
+ * Inicializa el gameState, variables y crea los procesos de los jugadores 
  */
 static void gameStateInit (gameState_t * gameState, char* widthStr, char* heightStr, const int seed, const int playerCount, char ** playerBins);
 
@@ -72,9 +73,8 @@ static pid_t newProc(const char * binary, char * const argv[]);
 
 /*
  * misma función que newProc, pero redirige el stdout del hijo al pipe dado  
-*/
+ */
 static pid_t newPipedProc(const char * binary, int pipe_fd, char * const argv[]);
-
 
 /*
  * crea un nuevo punto de spawn para el jugador playerIndex
@@ -98,7 +98,10 @@ static void checkBlockedPlayers(gameState_t * gameState);
  */
 static player_t * playerFromBin(char * binPath, int intSuffix, unsigned short x, unsigned short y, char * widthStr, char * heightStr);
 
-long getTimeMs()  ;
+/*
+ * utiliza clock_gettime() y retorna el tiempo en ms  
+ */
+static long long getTimeMs();
 
 /*  
  * Libera todos los recursos utilizados por chompchamps
@@ -124,7 +127,7 @@ int main(int argc, char *argv[]) {
     delay = strtoul(delayStr, NULL, 10);
     timeout = strtoul(timeoutStr, NULL, 10);
     seed = strtol(seedStr, NULL, 10);
-    savedTime = getTimeMs() ;
+    savedTime = getTimeMs();
 
 
     // creación memorias compartidas
@@ -137,54 +140,58 @@ int main(int argc, char *argv[]) {
     semaphoresInit(semaphores);
     gameStateInit(gameState, widthStr, heightStr, seed, argc - MIN_MASTER_ARGC, &argv[MIN_MASTER_ARGC]);
 
-
     // Crear proceso de vista
     char * const viewArgs[] = {(char *)viewBinary, widthStr, heightStr, NULL};
     pid_t view_pid = newProc(viewBinary, viewArgs);
     checkPid(view_pid, "Error creando proceso vista", EXIT_FAILURE);
     printf("Creado proceso vista con PID: %d\n", view_pid);
-    sem_post(&semaphores->masterToView); // pedirle a la vista imprimir estado inicial del tablero
+    // pedirle a la vista imprimir estado inicial del tablero
+    sem_post(&semaphores->masterToView); 
     sem_wait(&semaphores->viewToMaster);
 
-
-    unsigned char playerChecking = 0 ; // indice del jugador a verificar 
-
+    unsigned char playerChecking = 0 ;
 
     while (!gameState->finished) {
         sem_wait(&semaphores->masterMutex); // Bloqueo a los jugadores al inicio del loop
         sem_wait(&semaphores->gameStateMutex); // Espero a que terminen los que ya estaban leyendo
 
-        if (!gameState->playerArray[playerChecking].isBlocked){
+        if (!gameState->playerArray[playerChecking].isBlocked){ // chequear solo los jugadores no bloqueados
             unsigned char nextMove = -1;
             ssize_t bytesReaded = read(pipes[playerChecking][0], &nextMove, 1);
-            if (bytesReaded == 1){
-                updatePlayerPosition(gameState ,&gameState->playerArray[playerChecking],playerChecking ,nextMove, gameState->width, gameState->height);
-                checkBlockedPlayers(gameState);
-                sem_post(&semaphores->playerSems[playerChecking]); // le aviso al jugador que puede mandar otro movimiento.
+            switch (bytesReaded){
+                case 0:
+                    gameState->playerArray[playerChecking].isBlocked = true; // EOF -> Jugador bloqueado
+                    sem_post(&semaphores->gameStateMutex); // Liberar el estado para los jugadores (antes de hacer escribir a la vista)
+                    sem_post(&semaphores->masterMutex); 
+                    break;
+                case 1:
+                    updatePlayerPosition(gameState ,&gameState->playerArray[playerChecking],playerChecking ,nextMove, gameState->width, gameState->height);
+                    
+                    checkBlockedPlayers(gameState);
+                    sem_post(&semaphores->playerSems[playerChecking]); // le aviso al jugador que puede mandar otro movimiento.
 
-                sem_post(&semaphores->gameStateMutex); // Liberar el estado para los jugadores (antes de hacer escribir a la vista)
-                sem_post(&semaphores->masterMutex);    
+                    sem_post(&semaphores->gameStateMutex); // Liberar el estado para los jugadores (antes de hacer escribir a la vista)
+                    sem_post(&semaphores->masterMutex);    
 
-                sem_post(&semaphores->masterToView);// si hubo cambios, notificar a la vista
-                sem_wait(&semaphores->viewToMaster);           
-            }else if (bytesReaded == -1){
-                perror("Error reading from pipe");
-                exit(EXIT_FAILURE);          
-            }else if (bytesReaded == 0){
-                gameState->playerArray[playerChecking].isBlocked = true; // EOF -> Jugador bloqueado
-                sem_post(&semaphores->gameStateMutex); // Liberar el estado para los jugadores (antes de hacer escribir a la vista)
-                sem_post(&semaphores->masterMutex);  
+                    sem_post(&semaphores->masterToView); // notificar a la vista que hubo cambios
+                    sem_wait(&semaphores->viewToMaster); 
+
+                    bool allBlocked = true;
+                    for (int i = 0 ; i < gameState->playerCount ; i++){
+                        if (!gameState->playerArray[i].isBlocked) allBlocked = false;
+                    }
+                    if (allBlocked) gameState->finished = true;
+                    break;
+                default:
+                    gameState->playerArray[playerChecking].isBlocked = true; // EOF -> Jugador bloqueado
+                    sem_post(&semaphores->gameStateMutex); // Liberar el estado para los jugadores (antes de hacer escribir a la vista)
+                    sem_post(&semaphores->masterMutex);  
+                    break;
             }
         }else{
             sem_post(&semaphores->gameStateMutex); // Liberar el estado para los jugadores
             sem_post(&semaphores->masterMutex);             
         }
-
-        bool allBlocked = true;
-        for (int i = 0 ; i < gameState->playerCount ; i++){
-            if (!gameState->playerArray[i].isBlocked) allBlocked = false;
-        }
-        if (allBlocked) gameState->finished = true;
 
         if (++playerChecking >= gameState->playerCount) {
             playerChecking = 0;
@@ -196,13 +203,13 @@ int main(int argc, char *argv[]) {
     sem_post(&semaphores->masterToView); // pedir a la vista imprimir el estado final del juego.
     sem_wait(&semaphores->viewToMaster);  
     
+    // desbloquear jugadores para que finalicen su ejecucion al terminar el juego
     for (int i = 0 ; i < gameState->playerCount ; i++){
         sem_post(&semaphores->playerSems[i]);
     }
     
-    //aca wait escribe el codigo con el que termino el proceso hijo
+    //finalizar procesos
     int status;
-    //aca wait me retorna el pid del proceso que termino
     pid_t finished_pid;
 
     while ( (finished_pid = wait(&status)) > 0 ) {
@@ -214,13 +221,11 @@ int main(int argc, char *argv[]) {
             printf("Proceso con PID %d terminó de manera inesperada\n", finished_pid);
         }
     }
-
-    printf("Terminaron todos los hijos :)\n");
-    printf("Terminó master con PID: %d\n", getpid());
-
+    
     freeResources(gameState,semaphores);
 
-
+    printf("Proceso Master con PID: %d\n terminó", getpid());
+    
     return 0;
 }
 
@@ -513,11 +518,9 @@ void updatePlayerPosition(gameState_t* gamestate, player_t* player, int playerIn
     }else{
         player->invalidReqs++;
     }
-
-
 }
 
-long getTimeMs()  {
+long long getTimeMs()  {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
