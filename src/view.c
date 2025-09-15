@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
     
     gameState_t* gameState;
     semaphores_t* semaphores;
-    openShms(strtoul(argv[1], NULL, 10), strtoul(argv[2], NULL, 10), &gameState, &semaphores);
+    openReadShm(strtoul(argv[1], NULL, 10), strtoul(argv[2], NULL, 10), &gameState, &semaphores);
 
     printf("\033[2J\033[H");    // limpiar pantalla
     printf("\033[?25l");        // Ocultar cursor
@@ -71,10 +71,19 @@ int main(int argc, char* argv[]) {
     }
 
     printf("\033[?25h");        // Mostrar cursor
-    munmap(gameState, sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
-    munmap(semaphores, sizeof(semaphores_t));
+    if (gameState != NULL) {
+        size_t gameStateSize = sizeof(gameState_t) + (size_t)gameState->width * gameState->height * sizeof(int);
+        if (munmap(gameState, gameStateSize) == -1) {
+            perror("view: munmap(gameState) failed");
+        }
+     }
+     if (semaphores != NULL) {
+        if (munmap(semaphores, sizeof(semaphores_t)) == -1) {
+            perror("view: munmap(semaphores) failed");
+        }
+     }
 
-    return 0;
+     return 0;
 }
 
 

@@ -22,7 +22,7 @@ int main(int argc, char* argv[]) {
     srand(time(NULL));
     gameState_t* gameState;
     semaphores_t* semaphores;
-    openShms(strtoul(argv[1], NULL, 10), strtoul(argv[2], NULL, 10), &gameState, &semaphores);
+    openReadShm(strtoul(argv[1], NULL, 10), strtoul(argv[2], NULL, 10), &gameState, &semaphores);
 
     gameState_t* savedGameState = malloc(sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
     checkMalloc(savedGameState, "malloc failed for savedGameState", EXIT_FAILURE);

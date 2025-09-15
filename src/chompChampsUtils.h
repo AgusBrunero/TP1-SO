@@ -15,4 +15,6 @@ void checkPid(pid_t pid, const char* msg, int exitCode);
  */
 void openShms(unsigned short width, unsigned short height, gameState_t** gameState, semaphores_t** semaphores);
 
+void openReadShm(unsigned short width, unsigned short height, gameState_t** gameState, semaphores_t** semaphores);
+
 #endif

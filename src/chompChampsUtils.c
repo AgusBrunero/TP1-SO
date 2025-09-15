@@ -18,7 +18,51 @@
 void cleanupShm(const char* name) {
     shm_unlink(name);
 }
+void openReadShm(unsigned short width, unsigned short height, gameState_t** gameState, semaphores_t** semaphores) {
+    fprintf(stderr, "openReadShm: Iniciando con width=%d, height=%d\n", width, height);
 
+    // Mapear memoria compartida de gameState
+    size_t gameStateByteSize = sizeof(gameState_t) + width * height * sizeof(int);
+    fprintf(stderr, "openReadShm: Calculé gameStateByteSize=%zu\n", gameStateByteSize);
+
+    int gameStateShmFd = shm_open("/game_state", O_RDONLY, 644);
+    if (gameStateShmFd == -1) {
+        perror("shm_open game_state");
+        exit(EXIT_FAILURE);
+    }
+    fprintf(stderr, "openReadShm: shm_open game_state exitoso\n");
+
+    *gameState = mmap(NULL, gameStateByteSize, PROT_READ, MAP_SHARED, gameStateShmFd, 0);
+    if (*gameState == MAP_FAILED) {
+        perror("mmap gameState failed");
+        exit(EXIT_FAILURE);
+    }
+    fprintf(stderr, "openReadShm: mmap gameState exitoso at %p\n", (void*)*gameState); fflush(stderr);
+    close(gameStateShmFd);
+
+    // Mapear memoria compartida de semaphores
+    fprintf(stderr, "hello wrold\n");
+    size_t semaphoresByteSize = sizeof(semaphores_t);
+    fprintf(stderr, "openReadShm: semaphoresByteSize=%zu\n", semaphoresByteSize);
+
+    int semaphoresShmFd = shm_open("/game_sync", O_RDWR, 0666);
+    if (semaphoresShmFd == -1) {
+        perror("shm_open game_sync");
+        exit(EXIT_FAILURE);
+    }
+    fprintf(stderr, "openReadShm: shm_open game_sync exitoso\n");
+
+    *semaphores = mmap(NULL, semaphoresByteSize, PROT_READ | PROT_WRITE, MAP_SHARED, semaphoresShmFd, 0);
+    if (*semaphores == MAP_FAILED) {
+        perror("mmap semaphores failed");
+        exit(EXIT_FAILURE);
+    }
+    fprintf(stderr, "openReadShm: mmap semaphores exitoso at %p\n", (void*)*semaphores);
+    fflush(stderr);
+    close(semaphoresShmFd);
+
+    fprintf(stderr, "openReadShm: Terminando exitosamente\n");
+}
 void getGameState(gameState_t* gameState, semaphores_t* semaphores, gameState_t* gameStateBuffer) {
 
     sem_wait(&semaphores->masterMutex); // Si el master está escribiendo espero
