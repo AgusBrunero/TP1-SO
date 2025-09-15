@@ -70,6 +70,7 @@ int main(int argc, char* argv[]) {
         sem_post(&semaphores->viewToMaster);
     }
 
+    printf("\033[?25h");        // Mostrar cursor
     munmap(gameState, sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
     munmap(semaphores, sizeof(semaphores_t));
 

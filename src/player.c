@@ -28,7 +28,6 @@ int main(int argc, char* argv[]) {
     checkMalloc(savedGameState, "malloc failed for savedGameState", EXIT_FAILURE);
 
     pid_t myPid = getpid();
-    printf("¡Hola! Soy un JUGADOR con PID: %d\n", myPid);
 
     int myIndex = -1;
     for (int i = 0; i < gameState->playerCount; i++) {
@@ -42,7 +41,7 @@ int main(int argc, char* argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    while (!gameState->finished && !gameState->playerArray[myIndex].isBlocked) {
+    while (!gameState->playerArray[myIndex].isBlocked) {
         sem_wait(&semaphores->playerSems[myIndex]);
         getGameState(gameState, semaphores, savedGameState);
         unsigned char direction = getNextMovement(savedGameState, myIndex);

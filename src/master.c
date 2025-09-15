@@ -9,6 +9,7 @@
 #include <sys/wait.h>
 #include <sys/mman.h>
 #include <time.h>
+#include <string.h>
 #include "defs.h"
 #include "chompChampsUtils.h"
 
@@ -17,11 +18,20 @@
 #include <fcntl.h>       // O_CREAT, O_RDWR, O_TRUNC
 #include <unistd.h>      // ftruncate, close
 
+#define MINPLAYERS 1
 #define MAXPLAYERS 9
 #define MAXPATHLEN 256
 #define ARGLEN 8
 
-#define MIN_MASTER_ARGC 7 //con 1 solo player: procName, w,h,d,t,seed,viewBin,playerBin1
+#define MIN_MASTER_ARGC 14 //con 1 solo player: procName, w,h,d,t,seed,viewBin,playerBin1
+
+#define DEFAULTWIDTH "10"
+#define DEFAULTHEIGHT "10"
+#define DEFAULTDELAY "200"
+#define DEFAULTTIMEOUT "3000"
+#define DEFAULTSEED "0"
+
+
 
 typedef struct doublePointStruct {
     double x;
@@ -111,16 +121,54 @@ static void freeResources();
 // Función para actualizar las coordenadas según la dirección
 static void updatePlayerPosition(gameState_t* gamestate, player_t* player, int playerIndex, unsigned char direccion, unsigned short width, unsigned short height);
 
+
+static char* getParam( const char* flag, char* argv[], int argc);
+
+
 int main(int argc, char *argv[]) {
+
+    char* widthStr = getParam("-w", argv, argc);
+    widthStr = widthStr ? widthStr : DEFAULTWIDTH;
+    
+    char* heightStr = getParam("-h", argv, argc);
+    heightStr = heightStr ? heightStr : DEFAULTHEIGHT;
+    
+    char* delayStr = getParam("-d", argv, argc);
+    delayStr = delayStr ? delayStr : DEFAULTDELAY;
+    
+    char* timeoutStr = getParam("-t", argv, argc);
+    timeoutStr = timeoutStr ? timeoutStr : DEFAULTTIMEOUT;
+    
+    char* seedStr = getParam("-s", argv, argc);
+    seedStr = seedStr ? seedStr : DEFAULTSEED;
+
+    char * viewBinary = getParam("-v",argv,argc); 
+    char * playersBinaries [MAXPLAYERS] = {0};
+    int playersParamIndex = 0;
+    while (playersParamIndex++ < argc){
+        if(!strcmp(argv[playersParamIndex],"-p")) break; 
+    }
+    int playersCount = argc - ++playersParamIndex;
+
+    if (playersCount < MINPLAYERS || playersCount > MAXPLAYERS){
+        printf ("ERROR: El juego necesita entre 1 y 9 jugadores");
+    }
+
+    printf("p: %d\n", playersParamIndex);
+
+    for (int i = 0 ; i < playersCount ; i++){
+        playersBinaries[i] = argv[playersParamIndex+i];
+        printf("p%d: %s\n",i,playersBinaries[i]);
+    }
+    
+
 
     // recepción de parámetros
     printf("Master PID: %d\n", getpid());
-    char * widthStr = argv[1];
-    char * heightStr = argv[2];
-    char * delayStr = argv[3];
-    char * timeoutStr = argv[4];
-    char * seedStr = argv[5];
-    char * viewBinary = argv[6];
+ 
+
+    
+    
 
     width = strtoul(widthStr, NULL, 10);
     height = strtoul(heightStr, NULL, 10);
@@ -138,16 +186,20 @@ int main(int argc, char *argv[]) {
     openShms(width, height, &gameState, &semaphores);
 
     semaphoresInit(semaphores);
-    gameStateInit(gameState, widthStr, heightStr, seed, argc - MIN_MASTER_ARGC, &argv[MIN_MASTER_ARGC]);
+    //static void gameStateInit (gameState_t * gameState, char* widthStr, char* heightStr, const int seed, const int playerCount, char ** playerBins)
+    gameStateInit(gameState, widthStr, heightStr, seed, playersCount, playersBinaries);
 
-    // Crear proceso de vista
-    char * const viewArgs[] = {(char *)viewBinary, widthStr, heightStr, NULL};
-    pid_t view_pid = newProc(viewBinary, viewArgs);
-    checkPid(view_pid, "Error creando proceso vista", EXIT_FAILURE);
-    printf("Creado proceso vista con PID: %d\n", view_pid);
-    // pedirle a la vista imprimir estado inicial del tablero
-    sem_post(&semaphores->masterToView); 
-    sem_wait(&semaphores->viewToMaster);
+    if (viewBinary){
+        // Crear proceso de vista
+        char * const viewArgs[] = {(char *)viewBinary, widthStr, heightStr, NULL};
+        pid_t view_pid = newProc(viewBinary, viewArgs);
+        checkPid(view_pid, "Error creando proceso vista", EXIT_FAILURE);
+        printf("Creado proceso vista con PID: %d\n", view_pid);
+        // pedirle a la vista imprimir estado inicial del tablero
+        sem_post(&semaphores->masterToView); 
+        sem_wait(&semaphores->viewToMaster);
+    }
+
 
     unsigned char playerChecking = 0 ;
 
@@ -173,9 +225,11 @@ int main(int argc, char *argv[]) {
                     sem_post(&semaphores->gameStateMutex); // Liberar el estado para los jugadores (antes de hacer escribir a la vista)
                     sem_post(&semaphores->masterMutex);    
 
-                    sem_post(&semaphores->masterToView); // notificar a la vista que hubo cambios
-                    sem_wait(&semaphores->viewToMaster); 
-
+                    if (viewBinary){
+                        sem_post(&semaphores->masterToView); // notificar a la vista que hubo cambios
+                        sem_wait(&semaphores->viewToMaster); 
+                    }
+                    
                     bool allBlocked = true;
                     for (int i = 0 ; i < gameState->playerCount ; i++){
                         if (!gameState->playerArray[i].isBlocked) allBlocked = false;
@@ -197,17 +251,25 @@ int main(int argc, char *argv[]) {
             playerChecking = 0;
         }
         usleep(delay * 1000); // Convertir delay a microsegundos
-        if (getTimeMs()-savedTime  > timeout) gameState->finished = true;
+        if (getTimeMs()-savedTime  > timeout){
+            gameState->finished = true;
+            for (int i = 0 ; i < playersCount ; i++){
+                gameState->playerArray[i].isBlocked = true;
+            }
+        } 
+
     }
     
-    sem_post(&semaphores->masterToView); // pedir a la vista imprimir el estado final del juego.
-    sem_wait(&semaphores->viewToMaster);  
     
-    // desbloquear jugadores para que finalicen su ejecucion al terminar el juego
-    for (int i = 0 ; i < gameState->playerCount ; i++){
+    if (viewBinary){
+        sem_post(&semaphores->masterToView); // notificar a la vista que hubo cambios
+        sem_wait(&semaphores->viewToMaster); 
+    }
+
+    for (int i = 0 ; i < playersCount ; i++){
         sem_post(&semaphores->playerSems[i]);
     }
-    
+     
     //finalizar procesos
     int status;
     pid_t finished_pid;
@@ -425,7 +487,7 @@ static player_t * playerFromBin(char * binPath, int intSuffix, unsigned short x,
     return player;
 }
 
-void updatePlayerPosition(gameState_t* gamestate, player_t* player, int playerIndex , unsigned char direccion, unsigned short width, unsigned short height) {
+static void updatePlayerPosition(gameState_t* gamestate, player_t* player, int playerIndex , unsigned char direccion, unsigned short width, unsigned short height) {
     point_t newPosition = {player->x, player->y};
     char isValid;
 
@@ -520,11 +582,21 @@ void updatePlayerPosition(gameState_t* gamestate, player_t* player, int playerIn
     }
 }
 
-long long getTimeMs()  {
+static long long getTimeMs()  {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
+
+static char* getParam( const char* flag, char* argv[], int argc) {
+    for (int i = 0; i < argc - 1; i++) {  // argc - 1 porque necesitamos el siguiente
+        if (strcmp(argv[i], flag) == 0) {
+            return argv[i + 1];  // Devolver el siguiente argumento
+        }
+    }
+    return NULL;
+}
+
 
 static void freeResources(gameState_t * gameState, semaphores_t * semaphores) {
     for (int i=0 ; i < gameState->playerCount ; i++){
