@@ -37,7 +37,7 @@ int main(int argc, char* argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    while (!gameState->finished) {
+    while (!gameState->finished && !gameState->playerArray[myIndex].isBlocked) {
         sem_wait(&semaphores->playerSems[myIndex]);
         getGameState(gameState, semaphores, savedGameState);
         unsigned char direction = getNextMovement(savedGameState, myIndex);

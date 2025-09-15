@@ -68,7 +68,6 @@ int main(int argc, char* argv[]) {
         printBoard(gameState);
         printFinalRanking(gameState);
         sem_post(&semaphores->viewToMaster);
-
     }
 
     munmap(gameState, sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
@@ -196,9 +195,6 @@ void printFinalRanking(gameState_t* gameState) {
         printf("%*s", nameWidth, rankings[i].player->isBlocked ? "Si" : "No");
         if (i < gameState->playerCount - 1) printf(" | ");
     }
-
-
-
 
     printf("\n\n");
 }

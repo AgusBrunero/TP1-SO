@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <sys/wait.h>
 #include <sys/mman.h>
+#include <time.h>
 #include "defs.h"
 #include "chompChampsUtils.h"
 
@@ -38,6 +39,7 @@ static unsigned short width, height;
 static unsigned int timeout, delay;
 static int seed;
 static int pipes[MAXPLAYERS][2];
+static long savedTime;
 
 
 // Prototipos de funciones
@@ -96,6 +98,8 @@ static void checkBlockedPlayers(gameState_t * gameState);
  */
 static player_t * playerFromBin(char * binPath, int intSuffix, unsigned short x, unsigned short y, char * widthStr, char * heightStr);
 
+long getTimeMs()  ;
+
 /*  
  * Libera todos los recursos utilizados por chompchamps
  */
@@ -120,6 +124,8 @@ int main(int argc, char *argv[]) {
     delay = strtoul(delayStr, NULL, 10);
     timeout = strtoul(timeoutStr, NULL, 10);
     seed = strtol(seedStr, NULL, 10);
+    savedTime = getTimeMs() ;
+
 
     // creación memorias compartidas
     createShms(width, height);
@@ -173,14 +179,26 @@ int main(int argc, char *argv[]) {
             sem_post(&semaphores->gameStateMutex); // Liberar el estado para los jugadores
             sem_post(&semaphores->masterMutex);             
         }
+
+        bool allBlocked = true;
+        for (int i = 0 ; i < gameState->playerCount ; i++){
+            if (!gameState->playerArray[i].isBlocked) allBlocked = false;
+        }
+        if (allBlocked) gameState->finished = true;
+
         if (++playerChecking >= gameState->playerCount) {
             playerChecking = 0;
         }
         usleep(delay * 1000); // Convertir delay a microsegundos
+        if (getTimeMs()-savedTime  > timeout) gameState->finished = true;
     }
-
+    
     sem_post(&semaphores->masterToView); // pedir a la vista imprimir el estado final del juego.
-    sem_wait(&semaphores->viewToMaster);   
+    sem_wait(&semaphores->viewToMaster);  
+    
+    for (int i = 0 ; i < gameState->playerCount ; i++){
+        sem_post(&semaphores->playerSems[i]);
+    }
     
     //aca wait escribe el codigo con el que termino el proceso hijo
     int status;
@@ -200,9 +218,8 @@ int main(int argc, char *argv[]) {
     printf("Terminaron todos los hijos :)\n");
     printf("Terminó master con PID: %d\n", getpid());
 
-    freeResources();
-    munmap(gameState, sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
-    destroySemaphores(semaphores);
+    freeResources(gameState,semaphores);
+
 
     return 0;
 }
@@ -270,7 +287,6 @@ static void destroySemaphores(semaphores_t *semaphores) {
     for (int i = 0; i < 9; i++) {
         sem_destroy(&semaphores->playerSems[i]);
     }
-    munmap(semaphores, sizeof(semaphores_t));
 }
 
 static void randomizeBoard(int* board, int width, int height, int seed) {
@@ -345,7 +361,6 @@ static point_t getSpawnPoint(int playerIndex, gameState_t * gamestate) {
 }
 
 static void checkBlockedPlayers(gameState_t * gameState){
-    bool allBlocked = true;
 
     for (int i = 0; i < gameState->playerCount; i++) {
         player_t * player = &gameState->playerArray[i];
@@ -371,7 +386,6 @@ static void checkBlockedPlayers(gameState_t * gameState){
                 if (xToTest >= 0 && xToTest < gameState->width && yToTest >= 0 && yToTest < gameState->height) {
                     if (gameState->board[yToTest * gameState->width + xToTest] > 0) {
                         isBlocked = false;
-                        allBlocked = false;
                         break; // No es necesario seguir verificando si ya encontramos una dirección válida
                     }
                 }
@@ -379,7 +393,6 @@ static void checkBlockedPlayers(gameState_t * gameState){
             player->isBlocked = isBlocked;
         }
     }
-    if (allBlocked) gameState->finished = true;
 
 }
 
@@ -496,7 +509,7 @@ void updatePlayerPosition(gameState_t* gamestate, player_t* player, int playerIn
         player->validReqs++;
         player->score += gamestate->board[player->y * gamestate->width + player->x];
         gamestate->board[player->y * gamestate->width + player->x] = (-1) * playerIndex; // Comer la celda
-
+        savedTime = getTimeMs() ;
     }else{
         player->invalidReqs++;
     }
@@ -504,15 +517,30 @@ void updatePlayerPosition(gameState_t* gamestate, player_t* player, int playerIn
 
 }
 
-static void freeResources() {
+long getTimeMs()  {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+static void freeResources(gameState_t * gameState, semaphores_t * semaphores) {
+    for (int i=0 ; i < gameState->playerCount ; i++){
+        free(&(gameState->playerArray[i]));
+    }
+
     for (int i = 0; i < 9; i++) {
         if (pipes[i][0] != -1) close(pipes[i][0]);
         if (pipes[i][1] != -1) close(pipes[i][1]);
     }
+
+    destroySemaphores(semaphores);
+
     if (shm_unlink("/game_state") == -1) {
         perror("shm_unlink game_state");
     }
     if (shm_unlink("/game_sync") == -1) {
         perror("shm_unlink game_sync");
     }
+    munmap(gameState, sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
+    munmap(semaphores, sizeof(semaphores_t));
 }
