@@ -5,22 +5,6 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
-/*
-"ǁǁ"
-"Ͱ"
-"ඩ"
-"ᒥᒧᒪᒣ"
-"―‖‗‗"
-"⅂	⅃"
-"	⎡	⎢	⎣	⎤	⎥	⎦"
-"⎸	⎹"
-
-"┖	┗	┘	┙┚	┛"
-"┣ ┫	┰ ┸ ╂"
-"╬╩╦╗╚╝╔"
-*/
-
-
 #include "defs.h"
 #include "chompChampsUtils.h"
 
@@ -38,14 +22,9 @@
 #define MAX_PLAYERS 9
 
 static void printBoard(gameState_t * gameState);
-static int comparePlayers(const void* a, const void* b);
-static void printFinalRanking(gameState_t* gameState);
+static void printRanking(gameState_t* gameState);
 static const char * getPlayerColor(int playerIndex);
 
-typedef struct {
-    player_t* player;
-    int originalIndex;
-} PlayerRank;
 
 int main(int argc, char* argv[]) {
 
@@ -53,7 +32,6 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "Fallo en creacion de vista, argumentos: %s <nombre_shm>, %s <tamaño de bytes del gamestate>\n", argv[0], argv[1]);
         exit(EXIT_FAILURE);
     }
-    //printf("¡Hola! Soy la VISTA con PID: %d\n", getpid());
     
     gameState_t* gameState;
     semaphores_t* semaphores;
@@ -66,7 +44,7 @@ int main(int argc, char* argv[]) {
     while (!gameState->finished) {
         sem_wait(&semaphores->masterToView);
         printBoard(gameState);
-        printFinalRanking(gameState);
+        printRanking(gameState);
         sem_post(&semaphores->viewToMaster);
     }
 
@@ -102,7 +80,7 @@ static const char * getPlayerColor(int playerIndex) {
     }
 }
 
-void printBoard(gameState_t * gameState) {
+static void printBoard(gameState_t * gameState) {
     
     printf("\033[H"); // Mover el cursor a la posición (0,0)
     printf("CHOMPCHAMPS: Mapa %dx%d | Estado: %s\n\n", gameState->width, gameState->height, gameState->finished ? "Finalizado" : "En juego");
@@ -134,49 +112,25 @@ void printBoard(gameState_t * gameState) {
     }
 }
 
+static void printRanking(gameState_t* gameState) {
+    playerRank_t rankings[MAX_PLAYERS];
 
+    getPlayersRanking(gameState, rankings);
 
-int comparePlayers(const void* a, const void* b) {
-    const PlayerRank* p1 = (const PlayerRank*)a;
-    const PlayerRank* p2 = (const PlayerRank*)b;
-    
-    // Comparar por puntaje (mayor a menor)
-    if (p2->player->score != p1->player->score) {
-        return p2->player->score - p1->player->score;
+    if (gameState->finished){
+        printf("\n=== RANKING FINAL ===\n"); 
+    }else{
+        printf("\n=== RANKING ===\n");
     }
     
-    // Si hay empate, comparar por movimientos válidos (menor a mayor)
-    if (p1->player->validReqs != p2->player->validReqs) {
-        return p1->player->validReqs - p2->player->validReqs;
-    }
-    
-    // Si persiste el empate, comparar por movimientos inválidos (menor a mayor)
-    return p1->player->invalidReqs - p2->player->invalidReqs;
-}
-
-void printFinalRanking(gameState_t* gameState) {
-    PlayerRank rankings[MAX_PLAYERS];
-
-    // Inicializar el array de rankings
-    for (int i = 0; i < gameState->playerCount; i++) {
-        rankings[i].player = &gameState->playerArray[i];
-        rankings[i].originalIndex = i;
-    }
-
-    // Ordenar jugadores
-    qsort(rankings, gameState->playerCount, sizeof(PlayerRank), comparePlayers);
-
-    // Imprimir resultados
-    printf("\n=== RANKING FINAL ===\n");
-
-    // Calculate max width for player names
+    // Ancho maximo para los nombres de jugadores
     int nameWidth = 0;
     for (int i = 0; i < gameState->playerCount; i++) {
         int len = strlen(rankings[i].player->name);
         if (len > nameWidth) nameWidth = len;
     }
-    if (nameWidth < 4) nameWidth = 4; // Minimum width for aesthetics
-    nameWidth += 2; // Padding
+    if (nameWidth < 4) nameWidth = 4;
+    nameWidth += 2;
 
     // Imprimir nombres en una sola línea, separados por |
     printf("Jugador:    ");

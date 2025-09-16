@@ -192,7 +192,6 @@ int main(int argc, char *argv[]) {
     }
 
     unsigned char playerChecking = 0 ;
-
     while (!gameState->finished) {
         sem_wait(&semaphores->masterMutex); // Bloqueo a los jugadores al inicio del loop
         sem_wait(&semaphores->gameStateMutex); // Espero a que terminen los que ya estaban leyendo
@@ -240,6 +239,7 @@ int main(int argc, char *argv[]) {
         if (++playerChecking >= gameState->playerCount) {
             playerChecking = 0;
         }
+
         usleep(delay * 1000); // Convertir delay a microsegundos
         if (getTimeMs()-savedTime  > timeout){
             gameState->finished = true;
@@ -259,6 +259,24 @@ int main(int argc, char *argv[]) {
         sem_post(&semaphores->playerSems[i]);
     }
      
+    printf("JUEGO TERMINADO\n");
+
+    playerRank_t rankings[MAXPLAYERS];
+
+    getPlayersRanking(gameState, rankings);
+
+    int winners = 1;
+    for (int i = 0 ; i < gameState->playerCount - 1 && !comparePlayersRank(&rankings[0],&rankings[i+1]) ; i++ , winners++);
+    if (winners > 1){
+        printf("EMPATE ENTRE LOS JUGADORES: ");
+        for (int i = 0 ; i < winners ; i++)
+            printf("%s ", rankings[i].player->name);
+        printf("\n");    
+    }else{
+        printf("GANADOR: %s ", rankings[0].player->name);
+        printf("\n");
+    }
+
     //finalizar procesos
     int status;
     pid_t finished_pid;
@@ -275,7 +293,7 @@ int main(int argc, char *argv[]) {
     
     freeResources(gameState,semaphores);
 
-    printf("Proceso Master con PID: %d\n terminó", getpid());
+    printf("Proceso con PID: %d\n (Master) terminó", getpid());
     
     return 0;
 }

@@ -152,3 +152,33 @@ void checkPid(pid_t pid, const char* msg, int exitCode){
         exit(exitCode);
     }
 }
+
+int comparePlayersRank(const void* a, const void* b){
+    const playerRank_t* p1 = (const playerRank_t*)a;
+    const playerRank_t* p2 = (const playerRank_t*)b;
+    
+    // Comparar por puntaje (mayor a menor)
+    if (p2->player->score != p1->player->score) {
+        return p2->player->score - p1->player->score;
+    }
+    
+    // Si hay empate, comparar por movimientos válidos (menor a mayor)
+    if (p1->player->validReqs != p2->player->validReqs) {
+        return p1->player->validReqs - p2->player->validReqs;
+    }
+    
+    // Si persiste el empate, comparar por movimientos inválidos (menor a mayor)
+    return p1->player->invalidReqs - p2->player->invalidReqs;
+}
+
+void getPlayersRanking(gameState_t * gameState, playerRank_t * playerRank){
+    
+    // Inicializar el array de rankings
+    for (int i = 0; i < gameState->playerCount; i++) {
+        playerRank[i].player = &gameState->playerArray[i];
+        playerRank[i].originalIndex = i;
+    }
+
+    // Ordenar jugadores
+    qsort(playerRank, gameState->playerCount, sizeof(playerRank_t), comparePlayersRank);
+}

@@ -36,6 +36,7 @@ int main(int argc, char* argv[]) {
             break;
         }
     }
+    
     if (myIndex == -1) {
         fprintf(stderr, "Error: No se encontró el jugador en el gameState\n");
         exit(EXIT_FAILURE);
