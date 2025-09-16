@@ -1,5 +1,6 @@
 #include <ctype.h>   // Para toupper
 #include <string.h>  // Para strdup
+
 #include "CuTest.h"
 
 // Mal implementado a propósito para que falle
@@ -9,7 +10,7 @@ char* StrToUpper(char* str) {
     return str;
 }
 
-void TestStrToUpper(CuTest *tc) {
+void TestStrToUpper(CuTest* tc) {
     char* input = strdup("hello world");
     char* actual = StrToUpper(input);
     char* expected = "HELLO WORLD";

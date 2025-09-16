@@ -1,10 +1,11 @@
 #include <stdio.h>
+
 #include "CuTest.h"
 
 CuSuite* testThatFailsGetSuite();
 
 void RunAllTests(void) {
-    CuString *output = CuStringNew();
+    CuString* output = CuStringNew();
     CuSuite* suite = CuSuiteNew();
 
     CuSuiteAddSuite(suite, testThatFailsGetSuite());
@@ -15,6 +16,4 @@ void RunAllTests(void) {
     printf("%s\n", output->buffer);
 }
 
-int main(void) {
-    RunAllTests();
-}
+int main(void) { RunAllTests(); }
