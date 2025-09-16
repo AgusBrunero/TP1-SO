@@ -302,7 +302,7 @@ int main(int argc, char *argv[]) {
         printf("\n");
     } else {
         printf("GANADOR: %s ", rankings[0].player->name);
-        printf("\n");
+        printf("\n\n");
     }
 
     // finalizar procesos
@@ -324,7 +324,7 @@ int main(int argc, char *argv[]) {
 
     freeResources(gameState, semaphores);
 
-    printf("Proceso con PID: %d\n (Master) terminó", getpid());
+    printf("Proceso con PID: %d (Master) terminó \n", getpid());
 
     return 0;
 }
