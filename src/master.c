@@ -23,14 +23,13 @@
 #define MAXPATHLEN 256
 #define ARGLEN 8
 
-#define MIN_MASTER_ARGC \
-    14  // con 1 solo player: procName, w,h,d,t,seed,viewBin,playerBin1
+#define MIN_MASTER_ARGC 14  // con 1 solo player: procName, w,h,d,t,seed,viewBin,playerBin1
 
-#define DEFAULTWIDTH "10"
-#define DEFAULTHEIGHT "10"
-#define DEFAULTDELAY "200"
-#define DEFAULTTIMEOUT "3000"
-#define DEFAULTSEED "0"
+#define DEFAULTWIDTH 10
+#define DEFAULTHEIGHT 10
+#define DEFAULTDELAY 200
+#define DEFAULTTIMEOUT 10
+#define DEFAULTSEED time(NULL)
 
 typedef struct doublePointStruct {
     double x;
@@ -42,13 +41,23 @@ typedef struct pointStruct {
     unsigned short y;
 } point_t;
 
-// Variables Globales
+typedef struct masterDataStruct {
+    unsigned short width;
+    unsigned short height;
+    unsigned int delay;
+    unsigned int timeout;
+    int seed;
+    char *viewBinary;
+    char *playerBinaries[MAXPLAYERS];
+    int playerCount;
+    unsigned long long savedTime;
+    char *widthStr;
+    char *heightStr;
+} masterData_t;
 
-static unsigned short width, height;
-static unsigned int timeout, delay;
-static int seed;
+// Variables Globales
+static masterData_t masterData = {DEFAULTWIDTH, DEFAULTHEIGHT, DEFAULTDELAY, DEFAULTTIMEOUT, 0, NULL, {NULL}, 0, 0, "10", "20"};
 static int pipes[MAXPLAYERS][2];
-static long long savedTime;
 
 // Prototipos de funciones
 
@@ -60,9 +69,7 @@ static void semaphoresInit(semaphores_t *semaphores);
 /*
  * Inicializa el gameState, variables y crea los procesos de los jugadores
  */
-static void gameStateInit(gameState_t *gameState, char *widthStr,
-                          char *heightStr, const int seed,
-                          const int playerCount, char **playerBins);
+static void gameStateInit(gameState_t *gameState, unsigned short width, unsigned short height, const int seed, const int playerCount, char **playerBins);
 
 /*
  * destruye todos los semáforos en el struct semaphores_t
@@ -99,88 +106,42 @@ static void checkBlockedPlayers(gameState_t *gameState);
  * Crea un nuevo player_t inicializado con los parametros dados
  * en caso de error termina el programa
  */
-static player_t *playerFromBin(char *binPath, int intSuffix, unsigned short x,
-                               unsigned short y, char *widthStr,
-                               char *heightStr);
+static player_t *playerFromBin(char *binPath, int intSuffix, unsigned short x, unsigned short y, char *widthStr, char *heightStr);
 
 /*
  * utiliza clock_gettime() y retorna el tiempo en ms
  */
 static long long getTimeMs();
 
+// Función para actualizar las coordenadas según la dirección
+static void updatePlayerPosition(gameState_t *gamestate, player_t *player, int playerIndex, unsigned char direccion, unsigned short width,
+                                 unsigned short height);
+
+static void saveParams(int argc, char *argv[]);
+
 /*
  * Libera todos los recursos utilizados por chompchamps
  */
 static void freeResources();
 
-// Función para actualizar las coordenadas según la dirección
-static void updatePlayerPosition(gameState_t *gamestate, player_t *player,
-                                 int playerIndex, unsigned char direccion,
-                                 unsigned short width, unsigned short height);
-
-static char *getParam(const char *flag, char *argv[], int argc);
-
 int main(int argc, char *argv[]) {
-    // recepción de parámetros
-    char *widthStr = getParam("-w", argv, argc);
-    widthStr = widthStr ? widthStr : DEFAULTWIDTH;
-
-    char *heightStr = getParam("-h", argv, argc);
-    heightStr = heightStr ? heightStr : DEFAULTHEIGHT;
-
-    char *delayStr = getParam("-d", argv, argc);
-    delayStr = delayStr ? delayStr : DEFAULTDELAY;
-
-    char *timeoutStr = getParam("-t", argv, argc);
-    timeoutStr = timeoutStr ? timeoutStr : DEFAULTTIMEOUT;
-
-    char *seedStr = getParam("-s", argv, argc);
-    seedStr = seedStr ? seedStr : DEFAULTSEED;
-
-    char *viewBinary = getParam("-v", argv, argc);
-
-    char *playersBinaries[MAXPLAYERS] = {0};
-    int playersParamIndex = 0;
-    while (playersParamIndex++ < argc) {
-        if (!strcmp(argv[playersParamIndex], "-p")) break;
-    }
-    int playersCount = argc - ++playersParamIndex;
-
-    if (playersCount < MINPLAYERS || playersCount > MAXPLAYERS) {
-        printf("ERROR: El juego necesita entre 1 y 9 jugadores");
-    }
-
-    for (int i = 0; i < playersCount; i++) {
-        playersBinaries[i] = argv[playersParamIndex + i];
-    }
-
-    printf("Master PID: %d\n", getpid());
-
-    width = strtoul(widthStr, NULL, 10);
-    height = strtoul(heightStr, NULL, 10);
-    delay = strtoul(delayStr, NULL, 10);
-    timeout = strtoul(timeoutStr, NULL, 10);
-    seed = strtol(seedStr, NULL, 10);
-    savedTime = getTimeMs();
+    saveParams(argc, argv);
 
     // creación memorias compartidas
-    createShms(width, height);
+    createShms(masterData.width, masterData.height);
     // apertura memorias compartidas
     gameState_t *gameState;
     semaphores_t *semaphores;
-    openShms(width, height, &gameState, &semaphores);
+    openShms(masterData.width, masterData.height, &gameState, &semaphores);
 
     semaphoresInit(semaphores);
-    // static void gameStateInit (gameState_t * gameState, char* widthStr, char*
-    // heightStr, const int seed, const int playerCount, char ** playerBins)
-    gameStateInit(gameState, widthStr, heightStr, seed, playersCount,
-                  playersBinaries);
 
-    if (viewBinary) {
+    gameStateInit(gameState, masterData.width, masterData.height, masterData.seed, masterData.playerCount, masterData.playerBinaries);
+
+    if (masterData.viewBinary) {
         // Crear proceso de vista
-        char *const viewArgs[] = {(char *)viewBinary, widthStr, heightStr,
-                                  NULL};
-        pid_t view_pid = newProc(viewBinary, viewArgs);
+        char *const viewArgs[] = {(char *)masterData.viewBinary, masterData.widthStr, masterData.heightStr, NULL};
+        pid_t view_pid = newProc(masterData.viewBinary, viewArgs);
         checkPid(view_pid, "Error creando proceso vista", EXIT_FAILURE);
         printf("Creado proceso vista con PID: %d\n", view_pid);
         // pedirle a la vista imprimir estado inicial del tablero
@@ -190,75 +151,56 @@ int main(int argc, char *argv[]) {
 
     unsigned char playerChecking = 0;
     while (!gameState->finished) {
-        sem_wait(
-            &semaphores
-                 ->masterMutex);  // Bloqueo a los jugadores al inicio del loop
+        sem_wait(&semaphores->masterMutex);     // Bloqueo a los jugadores al inicio del loop
         sem_wait(&semaphores->gameStateMutex);  // Espero a que terminen los que
                                                 // ya estaban leyendo
 
-        if (!gameState->playerArray[playerChecking]
-                 .isBlocked) {  // chequear solo los jugadores no bloqueados
+        if (!gameState->playerArray[playerChecking].isBlocked) {  // chequear solo los jugadores no bloqueados
             unsigned char nextMove = -1;
             ssize_t bytesReaded = read(pipes[playerChecking][0], &nextMove, 1);
             switch (bytesReaded) {
                 case 0:
-                    gameState->playerArray[playerChecking].isBlocked =
-                        true;  // EOF -> Jugador bloqueado
-                    sem_post(
-                        &semaphores
-                             ->gameStateMutex);  // Liberar el estado para los
-                                                 // jugadores (antes de hacer
-                                                 // escribir a la vista)
+                    gameState->playerArray[playerChecking].isBlocked = true;  // EOF -> Jugador bloqueado
+                    sem_post(&semaphores->gameStateMutex);                    // Liberar el estado para los
+                                                                              // jugadores (antes de hacer
+                                                                              // escribir a la vista)
                     sem_post(&semaphores->masterMutex);
                     break;
                 case 1:
-                    updatePlayerPosition(
-                        gameState, &gameState->playerArray[playerChecking],
-                        playerChecking, nextMove, gameState->width,
-                        gameState->height);
+                    updatePlayerPosition(gameState, &gameState->playerArray[playerChecking], playerChecking, nextMove, gameState->width, gameState->height);
 
                     checkBlockedPlayers(gameState);
-                    sem_post(&semaphores->playerSems
-                                  [playerChecking]);  // le aviso al jugador que
-                                                      // puede mandar otro
-                                                      // movimiento.
+                    sem_post(&semaphores->playerSems[playerChecking]);  // le aviso al jugador que
+                                                                        // puede mandar otro
+                                                                        // movimiento.
 
-                    sem_post(
-                        &semaphores
-                             ->gameStateMutex);  // Liberar el estado para los
-                                                 // jugadores (antes de hacer
-                                                 // escribir a la vista)
+                    sem_post(&semaphores->gameStateMutex);  // Liberar el estado para los
+                                                            // jugadores (antes de hacer
+                                                            // escribir a la vista)
                     sem_post(&semaphores->masterMutex);
 
-                    if (viewBinary) {
-                        sem_post(
-                            &semaphores->masterToView);  // notificar a la vista
-                                                         // que hubo cambios
+                    if (masterData.viewBinary) {
+                        sem_post(&semaphores->masterToView);  // notificar a la vista
+                                                              // que hubo cambios
                         sem_wait(&semaphores->viewToMaster);
                     }
 
                     bool allBlocked = true;
                     for (int i = 0; i < gameState->playerCount; i++) {
-                        if (!gameState->playerArray[i].isBlocked)
-                            allBlocked = false;
+                        if (!gameState->playerArray[i].isBlocked) allBlocked = false;
                     }
                     if (allBlocked) gameState->finished = true;
                     break;
                 default:
-                    gameState->playerArray[playerChecking].isBlocked =
-                        true;  // EOF -> Jugador bloqueado
-                    sem_post(
-                        &semaphores
-                             ->gameStateMutex);  // Liberar el estado para los
-                                                 // jugadores (antes de hacer
-                                                 // escribir a la vista)
+                    gameState->playerArray[playerChecking].isBlocked = true;  // EOF -> Jugador bloqueado
+                    sem_post(&semaphores->gameStateMutex);                    // Liberar el estado para los
+                                                                              // jugadores (antes de hacer
+                                                                              // escribir a la vista)
                     sem_post(&semaphores->masterMutex);
                     break;
             }
         } else {
-            sem_post(
-                &semaphores
-                     ->gameStateMutex);  // Liberar el estado para los jugadores
+            sem_post(&semaphores->gameStateMutex);  // Liberar el estado para los jugadores
             sem_post(&semaphores->masterMutex);
         }
 
@@ -266,22 +208,21 @@ int main(int argc, char *argv[]) {
             playerChecking = 0;
         }
 
-        usleep(delay * 1000);  // Convertir delay a microsegundos
-        if (getTimeMs() - savedTime > timeout) {
+        usleep(masterData.delay * 1000);  // Convertir delay a microsegundos
+        if (getTimeMs() - masterData.savedTime > masterData.timeout) {
             gameState->finished = true;
-            for (int i = 0; i < playersCount; i++) {
+            for (int i = 0; i < masterData.playerCount; i++) {
                 gameState->playerArray[i].isBlocked = true;
             }
         }
     }
 
-    if (viewBinary) {
-        sem_post(&semaphores
-                      ->masterToView);  // notificar a la vista que hubo cambios
+    if (masterData.viewBinary) {
+        sem_post(&semaphores->masterToView);  // notificar a la vista que hubo cambios
         sem_wait(&semaphores->viewToMaster);
     }
 
-    for (int i = 0; i < playersCount; i++) {
+    for (int i = 0; i < masterData.playerCount; i++) {
         sem_post(&semaphores->playerSems[i]);
     }
 
@@ -292,13 +233,10 @@ int main(int argc, char *argv[]) {
     getPlayersRanking(gameState, rankings);
 
     int winners = 1;
-    for (int i = 0; i < gameState->playerCount - 1 &&
-                    !comparePlayersRank(&rankings[0], &rankings[i + 1]);
-         i++, winners++);
+    for (int i = 0; i < gameState->playerCount - 1 && !comparePlayersRank(&rankings[0], &rankings[i + 1]); i++, winners++);
     if (winners > 1) {
         printf("EMPATE ENTRE LOS JUGADORES: ");
-        for (int i = 0; i < winners; i++)
-            printf("%s ", rankings[i].player->name);
+        for (int i = 0; i < winners; i++) printf("%s ", rankings[i].player->name);
         printf("\n");
     } else {
         printf("GANADOR: %s ", rankings[0].player->name);
@@ -311,14 +249,11 @@ int main(int argc, char *argv[]) {
 
     while ((finished_pid = wait(&status)) > 0) {
         if (WIFEXITED(status)) {
-            printf("Proceso con PID %d terminó con estado %d\n", finished_pid,
-                   WEXITSTATUS(status));
+            printf("Proceso con PID %d terminó con estado %d\n", finished_pid, WEXITSTATUS(status));
         } else if (WIFSIGNALED(status)) {
-            printf("Proceso con PID %d terminó por señal %d\n", finished_pid,
-                   WTERMSIG(status));
+            printf("Proceso con PID %d terminó por señal %d\n", finished_pid, WTERMSIG(status));
         } else {
-            printf("Proceso con PID %d terminó de manera inesperada\n",
-                   finished_pid);
+            printf("Proceso con PID %d terminó de manera inesperada\n", finished_pid);
         }
     }
 
@@ -329,11 +264,9 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-static void gameStateInit(gameState_t *gameState, char *widthStr,
-                          char *heightStr, const int seed,
-                          const int playerCount, char **playerBins) {
-    gameState->width = (unsigned short)strtoul(widthStr, NULL, 10);
-    gameState->height = (unsigned short)strtoul(heightStr, NULL, 10);
+static void gameStateInit(gameState_t *gameState, unsigned short width, unsigned short height, const int seed, const int playerCount, char **playerBins) {
+    gameState->width = width;
+    gameState->height = height;
     gameState->playerCount = playerCount;
     gameState->finished = false;
     randomizeBoard(gameState->board, gameState->width, gameState->height, seed);
@@ -341,8 +274,7 @@ static void gameStateInit(gameState_t *gameState, char *widthStr,
     for (int i = 0; i < playerCount; i++) {
         point_t spawnPoint = getSpawnPoint(i, gameState);
         printf("%s\n", playerBins[i]);
-        gameState->playerArray[i] = *playerFromBin(
-            playerBins[i], i, spawnPoint.x, spawnPoint.y, widthStr, heightStr);
+        gameState->playerArray[i] = *playerFromBin(playerBins[i], i, spawnPoint.x, spawnPoint.y, masterData.widthStr, masterData.heightStr);
     }
 }
 
@@ -399,8 +331,7 @@ static void randomizeBoard(int *board, int width, int height, int seed) {
     srand(seed);
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
-            board[i * width + j] =
-                rand() % 9 + 1;  // Inicializar todas las celdas a 0
+            board[i * width + j] = rand() % 9 + 1;  // Inicializar todas las celdas a 0
         }
     }
 }
@@ -435,6 +366,9 @@ static pid_t newPipedProc(const char *binary, int pipe_fd, char *const argv[]) {
         // proceso hijo
         dup2(pipe_fd, STDOUT_FILENO);
         close(pipe_fd);
+
+        // TODO: CERRAR PIPES EXTRA AQUÍ
+
         execvp(binary, argv);
         // si se llega aquí, exec falló.
         printf("Error en execvp");
@@ -445,9 +379,8 @@ static pid_t newPipedProc(const char *binary, int pipe_fd, char *const argv[]) {
 }
 
 static point_t getSpawnPoint(int playerIndex, gameState_t *gamestate) {
-    srand(seed + playerIndex);
-    point_t toReturn = {playerIndex,
-                        playerIndex};  // valor por defecto en caso de error
+    srand(masterData.seed + playerIndex);
+    point_t toReturn = {playerIndex, playerIndex};  // valor por defecto en caso de error
     point_t usedPoints[playerIndex - 1];
     for (int i = 0; i < playerIndex - 1; i++) {
         usedPoints[i].x = gamestate->playerArray[i].x;
@@ -455,19 +388,16 @@ static point_t getSpawnPoint(int playerIndex, gameState_t *gamestate) {
     }
     char used = 1;
     while (used) {
-        toReturn.x = (rand() % (gamestate->width - 2)) +
-                     1;  // +/-1 para evitar las esquinas
+        toReturn.x = (rand() % (gamestate->width - 2)) + 1;  // +/-1 para evitar las esquinas
         toReturn.y = (rand() % (gamestate->height - 2)) + 1;
         used = 0;
         for (int i = 0; i < playerIndex; i++) {
-            if (usedPoints[i].x == toReturn.x &&
-                usedPoints[i].y == toReturn.y) {
+            if (usedPoints[i].x == toReturn.x && usedPoints[i].y == toReturn.y) {
                 used = 1;
             }
         }
     }
-    gamestate->board[toReturn.y * gamestate->width + toReturn.x] =
-        (-1) * playerIndex;  // Comer la celda inicial
+    gamestate->board[toReturn.y * gamestate->width + toReturn.x] = (-1) * playerIndex;  // Comer la celda inicial
     return toReturn;
 }
 
@@ -493,10 +423,8 @@ static void checkBlockedPlayers(gameState_t *gameState) {
                 int xToTest = x + directions[i][0];
                 int yToTest = y + directions[i][1];
 
-                if (xToTest >= 0 && xToTest < gameState->width &&
-                    yToTest >= 0 && yToTest < gameState->height) {
-                    if (gameState->board[yToTest * gameState->width + xToTest] >
-                        0) {
+                if (xToTest >= 0 && xToTest < gameState->width && yToTest >= 0 && yToTest < gameState->height) {
+                    if (gameState->board[yToTest * gameState->width + xToTest] > 0) {
                         isBlocked = false;
                         break;  // No es necesario seguir verificando si ya
                                 // encontramos una dirección válida
@@ -508,9 +436,7 @@ static void checkBlockedPlayers(gameState_t *gameState) {
     }
 }
 
-static player_t *playerFromBin(char *binPath, int intSuffix, unsigned short x,
-                               unsigned short y, char *widthStr,
-                               char *heightStr) {
+static player_t *playerFromBin(char *binPath, int intSuffix, unsigned short x, unsigned short y, char *widthStr, char *heightStr) {
     player_t *player = malloc(sizeof(player_t));
     checkMalloc(player, "malloc failed for player", EXIT_FAILURE);
 
@@ -518,8 +444,7 @@ static player_t *playerFromBin(char *binPath, int intSuffix, unsigned short x,
     pipe(pipes[intSuffix]);
     pid_t pid = newPipedProc(binPath, pipes[intSuffix][1], argv);
     if (pid == -1) {
-        printf("Error creando proceso jugador %s with binary: %s\n",
-               player->name, binPath);
+        printf("Error creando proceso jugador %s with binary: %s\n", player->name, binPath);
         exit(EXIT_FAILURE);
     }
 
@@ -535,9 +460,8 @@ static player_t *playerFromBin(char *binPath, int intSuffix, unsigned short x,
     return player;
 }
 
-static void updatePlayerPosition(gameState_t *gamestate, player_t *player,
-                                 int playerIndex, unsigned char direccion,
-                                 unsigned short width, unsigned short height) {
+static void updatePlayerPosition(gameState_t *gamestate, player_t *player, int playerIndex, unsigned char direccion, unsigned short width,
+                                 unsigned short height) {
     point_t newPosition = {player->x, player->y};
     char isValid;
 
@@ -615,8 +539,7 @@ static void updatePlayerPosition(gameState_t *gamestate, player_t *player,
             break;
     }
 
-    if (gamestate->board[newPosition.y * gamestate->width + newPosition.x] <=
-        0) {
+    if (gamestate->board[newPosition.y * gamestate->width + newPosition.x] <= 0) {
         isValid = 0;
     }
 
@@ -624,11 +547,9 @@ static void updatePlayerPosition(gameState_t *gamestate, player_t *player,
         player->x = newPosition.x;
         player->y = newPosition.y;
         player->validReqs++;
-        player->score +=
-            gamestate->board[player->y * gamestate->width + player->x];
-        gamestate->board[player->y * gamestate->width + player->x] =
-            (-1) * playerIndex;  // Comer la celda
-        savedTime = getTimeMs();
+        player->score += gamestate->board[player->y * gamestate->width + player->x];
+        gamestate->board[player->y * gamestate->width + player->x] = (-1) * playerIndex;  // Comer la celda
+        masterData.savedTime = getTimeMs();
     } else {
         player->invalidReqs++;
     }
@@ -640,14 +561,45 @@ static long long getTimeMs() {
     return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
-static char *getParam(const char *flag, char *argv[], int argc) {
-    for (int i = 0; i < argc - 1;
-         i++) {  // argc - 1 porque necesitamos el siguiente
-        if (strcmp(argv[i], flag) == 0) {
-            return argv[i + 1];  // Devolver el siguiente argumento
+static void saveParams(int argc, char *argv[]) {
+    masterData.seed = time(NULL);
+    masterData.savedTime = getTimeMs();
+
+    char opt;
+    while ((opt = getopt(argc, argv, "w:h:d:t:v:p:s:")) != -1) {
+        switch (opt) {
+            case 'w':
+                if (atoi(optarg) > 10) {
+                    masterData.width = (unsigned short)atoi(optarg);
+                    masterData.widthStr = optarg;
+                }
+                break;
+            case 'h':
+                if (atoi(optarg) > 10) {
+                    masterData.height = (unsigned short)atoi(optarg);
+                    masterData.heightStr = optarg;
+                }
+                break;
+            case 'd':
+                if (atoi(optarg) > 0) masterData.delay = (unsigned int)atoi(optarg);
+                break;
+            case 't':
+                if (atoi(optarg) > 0) masterData.timeout = (unsigned int)atoi(optarg);
+                break;
+            case 's':
+                masterData.seed = atoi(optarg);
+                break;
+            case 'v':
+                masterData.viewBinary = optarg;
+                break;
+            case 'p':
+                optind--;
+                while (optind < argc && argv[optind] && argv[optind][0] != '-' && masterData.playerCount < MAXPLAYERS) {
+                    masterData.playerBinaries[masterData.playerCount++] = argv[optind++];
+                }
+                break;
         }
     }
-    return NULL;
 }
 
 static void freeResources(gameState_t *gameState, semaphores_t *semaphores) {
@@ -664,7 +616,6 @@ static void freeResources(gameState_t *gameState, semaphores_t *semaphores) {
     if (shm_unlink("/game_sync") == -1) {
         perror("shm_unlink game_sync");
     }
-    munmap(gameState, sizeof(gameState_t) +
-                          gameState->width * gameState->height * sizeof(int));
+    munmap(gameState, sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
     munmap(semaphores, sizeof(semaphores_t));
 }

@@ -18,63 +18,42 @@
 
 void cleanupShm(const char* name) { shm_unlink(name); }
 
-void openReadShm(unsigned short width, unsigned short height,
-                 gameState_t** gameState, semaphores_t** semaphores) {
-    fprintf(stderr, "openReadShm: Iniciando con width=%d, height=%d\n", width,
-            height);
-
+void openReadShm(unsigned short width, unsigned short height, gameState_t** gameState, semaphores_t** semaphores) {
     // Mapear memoria compartida de gameState
-    size_t gameStateByteSize =
-        sizeof(gameState_t) + width * height * sizeof(int);
-    fprintf(stderr, "openReadShm: Calculé gameStateByteSize=%zu\n",
-            gameStateByteSize);
+    size_t gameStateByteSize = sizeof(gameState_t) + width * height * sizeof(int);
 
     int gameStateShmFd = shm_open("/game_state", O_RDONLY, 644);
     if (gameStateShmFd == -1) {
         perror("shm_open game_state");
         exit(EXIT_FAILURE);
     }
-    fprintf(stderr, "openReadShm: shm_open game_state exitoso\n");
 
-    *gameState =
-        mmap(NULL, gameStateByteSize, PROT_READ, MAP_SHARED, gameStateShmFd, 0);
+    *gameState = mmap(NULL, gameStateByteSize, PROT_READ, MAP_SHARED, gameStateShmFd, 0);
     if (*gameState == MAP_FAILED) {
         perror("mmap gameState failed");
         exit(EXIT_FAILURE);
     }
-    fprintf(stderr, "openReadShm: mmap gameState exitoso at %p\n",
-            (void*)*gameState);
     fflush(stderr);
     close(gameStateShmFd);
 
     // Mapear memoria compartida de semaphores
-    fprintf(stderr, "hello wrold\n");
     size_t semaphoresByteSize = sizeof(semaphores_t);
-    fprintf(stderr, "openReadShm: semaphoresByteSize=%zu\n",
-            semaphoresByteSize);
 
     int semaphoresShmFd = shm_open("/game_sync", O_RDWR, 0666);
     if (semaphoresShmFd == -1) {
         perror("shm_open game_sync");
         exit(EXIT_FAILURE);
     }
-    fprintf(stderr, "openReadShm: shm_open game_sync exitoso\n");
 
-    *semaphores = mmap(NULL, semaphoresByteSize, PROT_READ | PROT_WRITE,
-                       MAP_SHARED, semaphoresShmFd, 0);
+    *semaphores = mmap(NULL, semaphoresByteSize, PROT_READ | PROT_WRITE, MAP_SHARED, semaphoresShmFd, 0);
     if (*semaphores == MAP_FAILED) {
         perror("mmap semaphores failed");
         exit(EXIT_FAILURE);
     }
-    fprintf(stderr, "openReadShm: mmap semaphores exitoso at %p\n",
-            (void*)*semaphores);
     fflush(stderr);
     close(semaphoresShmFd);
-
-    fprintf(stderr, "openReadShm: Terminando exitosamente\n");
 }
-void getGameState(gameState_t* gameState, semaphores_t* semaphores,
-                  gameState_t* gameStateBuffer) {
+void getGameState(gameState_t* gameState, semaphores_t* semaphores, gameState_t* gameStateBuffer) {
     sem_wait(&semaphores->masterMutex);  // Si el master está escribiendo espero
 
     sem_wait(&semaphores->readersCountMutex);
@@ -84,9 +63,7 @@ void getGameState(gameState_t* gameState, semaphores_t* semaphores,
     sem_post(&semaphores->readersCountMutex);
 
     // Copiar el estado del juego al buffer
-    memcpy(gameStateBuffer, gameState,
-           sizeof(gameState_t) +
-               gameState->width * gameState->height * sizeof(int));
+    memcpy(gameStateBuffer, gameState, sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
 
     if (semaphores->readers_count-- == 1) {
         sem_post(&semaphores->gameStateMutex);  // paso a modo escritura
@@ -100,10 +77,8 @@ void createShms(unsigned short width, unsigned short height) {
     cleanupShm("/game_sync");
 
     // Crear memoria compartida para gameState
-    size_t gameStateByteSize =
-        sizeof(gameState_t) + width * height * sizeof(int);
-    int gameStateShmFd =
-        shm_open("/game_state", O_CREAT | O_RDWR | O_TRUNC, 0777);
+    size_t gameStateByteSize = sizeof(gameState_t) + width * height * sizeof(int);
+    int gameStateShmFd = shm_open("/game_state", O_CREAT | O_RDWR | O_TRUNC, 0777);
     if (gameStateShmFd == -1) {
         perror("shm_open (create) game_state");
         exit(EXIT_FAILURE);
@@ -117,8 +92,7 @@ void createShms(unsigned short width, unsigned short height) {
 
     // Crear memoria compartida para semaphores
     size_t semaphoresByteSize = sizeof(semaphores_t);
-    int semaphoresShmFd =
-        shm_open("/game_sync", O_CREAT | O_RDWR | O_TRUNC, 0777);
+    int semaphoresShmFd = shm_open("/game_sync", O_CREAT | O_RDWR | O_TRUNC, 0777);
     if (semaphoresShmFd == -1) {
         perror("shm_open (create) game_sync");
         exit(EXIT_FAILURE);
@@ -131,18 +105,15 @@ void createShms(unsigned short width, unsigned short height) {
     close(semaphoresShmFd);
 }
 
-void openShms(unsigned short width, unsigned short height,
-              gameState_t** gameState, semaphores_t** semaphores) {
+void openShms(unsigned short width, unsigned short height, gameState_t** gameState, semaphores_t** semaphores) {
     // Mapear memoria compartida de gameState
-    size_t gameStateByteSize =
-        sizeof(gameState_t) + width * height * sizeof(int);
+    size_t gameStateByteSize = sizeof(gameState_t) + width * height * sizeof(int);
     int gameStateShmFd = shm_open("/game_state", O_RDWR, 0666);
     if (gameStateShmFd == -1) {
         perror("shm_open game_state");
         exit(EXIT_FAILURE);
     }
-    *gameState = mmap(NULL, gameStateByteSize, PROT_READ | PROT_WRITE,
-                      MAP_SHARED, gameStateShmFd, 0);
+    *gameState = mmap(NULL, gameStateByteSize, PROT_READ | PROT_WRITE, MAP_SHARED, gameStateShmFd, 0);
     close(gameStateShmFd);
 
     // Mapear memoria compartida de semaphores
@@ -152,8 +123,7 @@ void openShms(unsigned short width, unsigned short height,
         perror("shm_open game_sync");
         exit(EXIT_FAILURE);
     }
-    *semaphores = mmap(NULL, semaphoresByteSize, PROT_READ | PROT_WRITE,
-                       MAP_SHARED, semaphoresShmFd, 0);
+    *semaphores = mmap(NULL, semaphoresByteSize, PROT_READ | PROT_WRITE, MAP_SHARED, semaphoresShmFd, 0);
     close(semaphoresShmFd);
 }
 
@@ -197,6 +167,5 @@ void getPlayersRanking(gameState_t* gameState, playerRank_t* playerRank) {
     }
 
     // Ordenar jugadores
-    qsort(playerRank, gameState->playerCount, sizeof(playerRank_t),
-          comparePlayersRank);
+    qsort(playerRank, gameState->playerCount, sizeof(playerRank_t), comparePlayersRank);
 }
