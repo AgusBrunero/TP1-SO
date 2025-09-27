@@ -1,10 +1,5 @@
-#!/bin/bash
+get opt
+/bin/true
+/bin/false
 
-# Verifica que se pasen exactamente 5 argumentos
-if [ $# -ne 5 ]; then
-    echo "Uso: $0 FILAS COLUMNAS DELAY TIMEOUT SEED"
-    exit 1
-fi
-
-# Ejecuta el master con los argumentos recibidos
-./bin/master -w "$1" -h "$2" -d "$3" -t "$4" -s "$5" -v ./bin/view -p ./bin/player ./bin/player ./bin/player
+valgrind --leak-check=full --show-leak-kinds=all -v ./bin/master.....

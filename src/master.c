@@ -23,8 +23,6 @@
 #define MAXPATHLEN 256
 #define ARGLEN 8
 
-#define MIN_MASTER_ARGC 14  // con 1 solo player: procName, w,h,d,t,seed,viewBin,playerBin1
-
 #define DEFAULTWIDTH 10
 #define DEFAULTHEIGHT 10
 #define DEFAULTDELAY 200
@@ -119,6 +117,8 @@ static void updatePlayerPosition(gameState_t *gamestate, player_t *player, int p
 
 static void saveParams(int argc, char *argv[]);
 
+static void printEndGame(gameState_t *gameState);
+
 /*
  * Libera todos los recursos utilizados por chompchamps
  */
@@ -138,17 +138,15 @@ int main(int argc, char *argv[]) {
 
     gameStateInit(gameState, masterData.width, masterData.height, masterData.seed, masterData.playerCount, masterData.playerBinaries);
 
-    if (masterData.viewBinary) {
+    printf("\n");
+    if (!(masterData.viewBinary == NULL)) {
         // Crear proceso de vista
         char *const viewArgs[] = {(char *)masterData.viewBinary, masterData.widthStr, masterData.heightStr, NULL};
         pid_t view_pid = newProc(masterData.viewBinary, viewArgs);
         checkPid(view_pid, "Error creando proceso vista", EXIT_FAILURE);
-        printf("Creado proceso vista con PID: %d\n", view_pid);
-        // pedirle a la vista imprimir estado inicial del tablero
         sem_post(&semaphores->masterToView);
         sem_wait(&semaphores->viewToMaster);
     }
-
     unsigned char playerChecking = 0;
     while (!gameState->finished) {
         sem_wait(&semaphores->masterMutex);     // Bloqueo a los jugadores al inicio del loop
@@ -179,9 +177,8 @@ int main(int argc, char *argv[]) {
                                                             // escribir a la vista)
                     sem_post(&semaphores->masterMutex);
 
-                    if (masterData.viewBinary) {
-                        sem_post(&semaphores->masterToView);  // notificar a la vista
-                                                              // que hubo cambios
+                    if (!(masterData.viewBinary == NULL)) {
+                        sem_post(&semaphores->masterToView);  // notificar a la vista que hubo cambios
                         sem_wait(&semaphores->viewToMaster);
                     }
 
@@ -217,7 +214,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if (masterData.viewBinary) {
+    if (!(masterData.viewBinary == NULL)) {
         sem_post(&semaphores->masterToView);  // notificar a la vista que hubo cambios
         sem_wait(&semaphores->viewToMaster);
     }
@@ -226,6 +223,27 @@ int main(int argc, char *argv[]) {
         sem_post(&semaphores->playerSems[i]);
     }
 
+    printEndGame(gameState);
+
+    // finalizar procesos
+    int status;
+    pid_t finished_pid;
+    while ((finished_pid = wait(&status)) > 0) {
+        if (WIFEXITED(status)) {
+            printf("Proceso con PID %d terminó con estado %d\n", finished_pid, WEXITSTATUS(status));
+        } else if (WIFSIGNALED(status)) {
+            printf("Proceso con PID %d terminó por señal %d\n", finished_pid, WTERMSIG(status));
+        } else {
+            printf("Proceso con PID %d terminó de manera inesperada\n", finished_pid);
+        }
+    }
+    freeResources(gameState, semaphores);
+    printf("Proceso con PID: %d (Master) terminó \n", getpid());
+
+    return 0;
+}
+
+static void printEndGame(gameState_t *gameState) {
     printf("JUEGO TERMINADO\n");
 
     playerRank_t rankings[MAXPLAYERS];
@@ -242,26 +260,6 @@ int main(int argc, char *argv[]) {
         printf("GANADOR: %s ", rankings[0].player->name);
         printf("\n\n");
     }
-
-    // finalizar procesos
-    int status;
-    pid_t finished_pid;
-
-    while ((finished_pid = wait(&status)) > 0) {
-        if (WIFEXITED(status)) {
-            printf("Proceso con PID %d terminó con estado %d\n", finished_pid, WEXITSTATUS(status));
-        } else if (WIFSIGNALED(status)) {
-            printf("Proceso con PID %d terminó por señal %d\n", finished_pid, WTERMSIG(status));
-        } else {
-            printf("Proceso con PID %d terminó de manera inesperada\n", finished_pid);
-        }
-    }
-
-    freeResources(gameState, semaphores);
-
-    printf("Proceso con PID: %d (Master) terminó \n", getpid());
-
-    return 0;
 }
 
 static void gameStateInit(gameState_t *gameState, unsigned short width, unsigned short height, const int seed, const int playerCount, char **playerBins) {
@@ -273,7 +271,6 @@ static void gameStateInit(gameState_t *gameState, unsigned short width, unsigned
 
     for (int i = 0; i < playerCount; i++) {
         point_t spawnPoint = getSpawnPoint(i, gameState);
-        printf("%s\n", playerBins[i]);
         gameState->playerArray[i] = *playerFromBin(playerBins[i], i, spawnPoint.x, spawnPoint.y, masterData.widthStr, masterData.heightStr);
     }
 }
@@ -426,8 +423,7 @@ static void checkBlockedPlayers(gameState_t *gameState) {
                 if (xToTest >= 0 && xToTest < gameState->width && yToTest >= 0 && yToTest < gameState->height) {
                     if (gameState->board[yToTest * gameState->width + xToTest] > 0) {
                         isBlocked = false;
-                        break;  // No es necesario seguir verificando si ya
-                                // encontramos una dirección válida
+                        break;
                     }
                 }
             }
@@ -444,7 +440,7 @@ static player_t *playerFromBin(char *binPath, int intSuffix, unsigned short x, u
     pipe(pipes[intSuffix]);
     pid_t pid = newPipedProc(binPath, pipes[intSuffix][1], argv);
     if (pid == -1) {
-        printf("Error creando proceso jugador %s with binary: %s\n", player->name, binPath);
+        printf("Error creando proceso jugador %s con binario: %s\n", player->name, binPath);
         exit(EXIT_FAILURE);
     }
 
