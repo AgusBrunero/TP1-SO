@@ -1,6 +1,7 @@
 CC = gcc
 CFLAGS = -g -Wall -std=c99 -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE
 LDFLAGS = -pthread -lrt
+NCURSES_LIBS = -lncursesw
 SRC_DIR = src
 BIN_DIR = bin
 OBJ_DIR = obj
@@ -27,7 +28,7 @@ $(BIN_DIR)/player: $(SRC_DIR)/player.c $(SRC_DIR)/defs.h $(UTILS_OBJ)
 	$(CC) $(CFLAGS) -o $@ $(SRC_DIR)/player.c $(UTILS_OBJ) $(LDFLAGS)
 
 $(BIN_DIR)/view: $(SRC_DIR)/view.c $(SRC_DIR)/defs.h $(UTILS_OBJ)
-	$(CC) $(CFLAGS) -o $@ $(SRC_DIR)/view.c $(UTILS_OBJ) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $@ $(SRC_DIR)/view.c $(UTILS_OBJ) $(LDFLAGS) $(NCURSES_LIBS)
 
 memcheck: all
 	valgrind --leak-check=full \
