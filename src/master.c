@@ -10,7 +10,8 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/mman.h>  // mmap, munmap, MAP_SHARED, PROT_READ, PROT_WRITE
-#include <sys/shm.h>   // shm_open, shm_unlink
+#include <sys/select.h>
+#include <sys/shm.h>  // shm_open, shm_unlink
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>  // ftruncate, close
@@ -54,7 +55,7 @@ typedef struct masterDataStruct {
 } masterData_t;
 
 // Variables Globales
-static masterData_t masterData = {DEFAULTWIDTH, DEFAULTHEIGHT, DEFAULTDELAY, DEFAULTTIMEOUT, 0, NULL, {NULL}, 0, 0, "10", "20"};
+static masterData_t masterData = {DEFAULTWIDTH, DEFAULTHEIGHT, DEFAULTDELAY, DEFAULTTIMEOUT, 0, NULL, {NULL}, 0, 0, "10", "10"};
 static int pipes[MAXPLAYERS][2];
 
 // Prototipos de funciones
@@ -112,10 +113,11 @@ static player_t *playerFromBin(char *binPath, int intSuffix, unsigned short x, u
 static long long getTimeMs();
 
 // Función para actualizar las coordenadas según la dirección
-static void updatePlayerPosition(gameState_t *gamestate, player_t *player, int playerIndex, unsigned char direccion, unsigned short width,
-                                 unsigned short height);
+static void updatePlayerPosition(gameState_t *gamestate, player_t *player, int playerIndex, unsigned char direccion);
 
 static void saveParams(int argc, char *argv[]);
+
+static void finishGame(gameState_t *gameState);
 
 static void printEndGame(gameState_t *gameState);
 
@@ -127,9 +129,8 @@ static void freeResources();
 int main(int argc, char *argv[]) {
     saveParams(argc, argv);
 
-    // creación memorias compartidas
     createShms(masterData.width, masterData.height);
-    // apertura memorias compartidas
+
     gameState_t *gameState;
     semaphores_t *semaphores;
     openShms(masterData.width, masterData.height, &gameState, &semaphores);
@@ -138,84 +139,86 @@ int main(int argc, char *argv[]) {
 
     gameStateInit(gameState, masterData.width, masterData.height, masterData.seed, masterData.playerCount, masterData.playerBinaries);
 
-    printf("\n");
     if (!(masterData.viewBinary == NULL)) {
-        // Crear proceso de vista
         char *const viewArgs[] = {(char *)masterData.viewBinary, masterData.widthStr, masterData.heightStr, NULL};
         pid_t view_pid = newProc(masterData.viewBinary, viewArgs);
         checkPid(view_pid, "Error creando proceso vista", EXIT_FAILURE);
         sem_post(&semaphores->masterToView);
         sem_wait(&semaphores->viewToMaster);
     }
+
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    int maxfd = -1;
+    for (int i = 0; i < masterData.playerCount; i++) {
+        if (pipes[i][0] > maxfd) maxfd = pipes[i][0];
+        FD_SET(pipes[i][0], &readfds);
+    }
+    maxfd++;
+
     unsigned char playerChecking = 0;
+
     while (!gameState->finished) {
+        struct timeval tv = {.tv_sec = 0, .tv_usec = masterData.timeout * 1000};
+        int ready = select(maxfd, &readfds, NULL, NULL, &tv);
+        switch (ready) {
+            case 0:  // TIMEOUT
+                finishGame(gameState);
+                break;
+            case -1:
+                if (errno == EINTR) continue;
+                perror("select");
+                exit(EXIT_FAILURE);
+                break;
+            default:
+                for (int i = 0; i < masterData.playerCount; i++) {
+                    if (FD_ISSET(pipes[playerChecking][0], &readfds)) break;
+                    if (++playerChecking >= gameState->playerCount) playerChecking = 0;
+                }
+                break;
+        }
+
+        if (gameState->playerArray[playerChecking].isBlocked) {
+            if (++playerChecking >= gameState->playerCount) playerChecking = 0;
+            continue;
+        }
+
         sem_wait(&semaphores->masterMutex);     // Bloqueo a los jugadores al inicio del loop
-        sem_wait(&semaphores->gameStateMutex);  // Espero a que terminen los que
-                                                // ya estaban leyendo
+        sem_wait(&semaphores->gameStateMutex);  // Espero a que terminen los que ya estaban leyendo
 
-        if (!gameState->playerArray[playerChecking].isBlocked) {  // chequear solo los jugadores no bloqueados
-            unsigned char nextMove = -1;
-            ssize_t bytesReaded = read(pipes[playerChecking][0], &nextMove, 1);
-            switch (bytesReaded) {
-                case 0:
-                    gameState->playerArray[playerChecking].isBlocked = true;  // EOF -> Jugador bloqueado
-                    sem_post(&semaphores->gameStateMutex);                    // Liberar el estado para los
-                                                                              // jugadores (antes de hacer
-                                                                              // escribir a la vista)
-                    sem_post(&semaphores->masterMutex);
-                    break;
-                case 1:
-                    updatePlayerPosition(gameState, &gameState->playerArray[playerChecking], playerChecking, nextMove, gameState->width, gameState->height);
+        unsigned char nextMove = -1;
+        read(pipes[playerChecking][0], &nextMove, 1);
+        sem_post(&semaphores->playerSems[playerChecking]);
 
-                    checkBlockedPlayers(gameState);
-                    sem_post(&semaphores->playerSems[playerChecking]);  // le aviso al jugador que
-                                                                        // puede mandar otro
-                                                                        // movimiento.
-
-                    sem_post(&semaphores->gameStateMutex);  // Liberar el estado para los
-                                                            // jugadores (antes de hacer
-                                                            // escribir a la vista)
-                    sem_post(&semaphores->masterMutex);
-
-                    if (!(masterData.viewBinary == NULL)) {
-                        sem_post(&semaphores->masterToView);  // notificar a la vista que hubo cambios
-                        sem_wait(&semaphores->viewToMaster);
-                    }
-
-                    bool allBlocked = true;
-                    for (int i = 0; i < gameState->playerCount; i++) {
-                        if (!gameState->playerArray[i].isBlocked) allBlocked = false;
-                    }
-                    if (allBlocked) gameState->finished = true;
-                    break;
-                default:
-                    gameState->playerArray[playerChecking].isBlocked = true;  // EOF -> Jugador bloqueado
-                    sem_post(&semaphores->gameStateMutex);                    // Liberar el estado para los
-                                                                              // jugadores (antes de hacer
-                                                                              // escribir a la vista)
-                    sem_post(&semaphores->masterMutex);
-                    break;
-            }
+        if (nextMove == EOF) {
+            gameState->playerArray[playerChecking].isBlocked = true;
         } else {
-            sem_post(&semaphores->gameStateMutex);  // Liberar el estado para los jugadores
-            sem_post(&semaphores->masterMutex);
-        }
+            updatePlayerPosition(gameState, &gameState->playerArray[playerChecking], playerChecking, nextMove);
+            checkBlockedPlayers(gameState);
 
-        if (++playerChecking >= gameState->playerCount) {
-            playerChecking = 0;
-        }
-
-        usleep(masterData.delay * 1000);  // Convertir delay a microsegundos
-        if (getTimeMs() - masterData.savedTime > masterData.timeout) {
-            gameState->finished = true;
-            for (int i = 0; i < masterData.playerCount; i++) {
-                gameState->playerArray[i].isBlocked = true;
+            if (!(masterData.viewBinary == NULL)) {
+                sem_post(&semaphores->masterToView);
+                sem_wait(&semaphores->viewToMaster);
             }
+
+            bool allBlocked = true;
+            for (int i = 0; i < gameState->playerCount; i++) {
+                if (!gameState->playerArray[i].isBlocked) allBlocked = false;
+            }
+            if (allBlocked) gameState->finished = true;
         }
+
+        sem_post(&semaphores->gameStateMutex);
+        sem_post(&semaphores->masterMutex);
+
+        if (++playerChecking >= gameState->playerCount) playerChecking = 0;
+
+        usleep(masterData.delay * 1000);
+        if (getTimeMs() - masterData.savedTime > masterData.timeout) finishGame(gameState);
     }
 
     if (!(masterData.viewBinary == NULL)) {
-        sem_post(&semaphores->masterToView);  // notificar a la vista que hubo cambios
+        sem_post(&semaphores->masterToView);
         sem_wait(&semaphores->viewToMaster);
     }
 
@@ -241,6 +244,13 @@ int main(int argc, char *argv[]) {
     printf("Proceso con PID: %d (Master) terminó \n", getpid());
 
     return 0;
+}
+
+static void finishGame(gameState_t *gameState) {
+    gameState->finished = true;
+    for (int i = 0; i < masterData.playerCount; i++) {
+        gameState->playerArray[i].isBlocked = true;
+    }
 }
 
 static void printEndGame(gameState_t *gameState) {
@@ -456,8 +466,7 @@ static player_t *playerFromBin(char *binPath, int intSuffix, unsigned short x, u
     return player;
 }
 
-static void updatePlayerPosition(gameState_t *gamestate, player_t *player, int playerIndex, unsigned char direccion, unsigned short width,
-                                 unsigned short height) {
+static void updatePlayerPosition(gameState_t *gamestate, player_t *player, int playerIndex, unsigned char direccion) {
     point_t newPosition = {player->x, player->y};
     char isValid;
 
@@ -471,7 +480,7 @@ static void updatePlayerPosition(gameState_t *gamestate, player_t *player, int p
             }
             break;
         case NORTHEAST:
-            if (newPosition.y > 0 && newPosition.x < width - 1) {
+            if (newPosition.y > 0 && newPosition.x < gamestate->width - 1) {
                 newPosition.y--;
                 newPosition.x++;
                 isValid = 1;
@@ -480,7 +489,7 @@ static void updatePlayerPosition(gameState_t *gamestate, player_t *player, int p
             }
             break;
         case EAST:
-            if (newPosition.x < width - 1) {
+            if (newPosition.x < gamestate->width - 1) {
                 newPosition.x++;
                 isValid = 1;
             } else {
@@ -488,7 +497,7 @@ static void updatePlayerPosition(gameState_t *gamestate, player_t *player, int p
             }
             break;
         case SOUTHEAST:
-            if (newPosition.y < height - 1 && newPosition.x < width - 1) {
+            if (newPosition.y < gamestate->height - 1 && newPosition.x < gamestate->width - 1) {
                 newPosition.y++;
                 newPosition.x++;
                 isValid = 1;
@@ -497,7 +506,7 @@ static void updatePlayerPosition(gameState_t *gamestate, player_t *player, int p
             }
             break;
         case SOUTH:
-            if (newPosition.y < height - 1) {
+            if (newPosition.y < gamestate->height - 1) {
                 newPosition.y++;
                 isValid = 1;
             } else {
@@ -505,7 +514,7 @@ static void updatePlayerPosition(gameState_t *gamestate, player_t *player, int p
             }
             break;
         case SOUTHWEST:
-            if (newPosition.y < height - 1 && newPosition.x > 0) {
+            if (newPosition.y < gamestate->height - 1 && newPosition.x > 0) {
                 newPosition.y++;
                 newPosition.x--;
                 isValid = 1;
