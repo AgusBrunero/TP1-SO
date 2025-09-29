@@ -130,13 +130,11 @@ int main(int argc, char *argv[]) {
     saveParams(argc, argv);
 
     createShms(masterData.width, masterData.height);
-
     gameState_t *gameState;
     semaphores_t *semaphores;
     openShms(masterData.width, masterData.height, &gameState, &semaphores);
 
     semaphoresInit(semaphores);
-
     gameStateInit(gameState, masterData.width, masterData.height, masterData.seed, masterData.playerCount, masterData.playerBinaries);
 
     if (!(masterData.viewBinary == NULL)) {
@@ -159,7 +157,7 @@ int main(int argc, char *argv[]) {
     unsigned char playerChecking = 0;
 
     while (!gameState->finished) {
-        struct timeval tv = {.tv_sec = 0, .tv_usec = masterData.timeout * 1000};
+        struct timeval tv = {.tv_sec = masterData.timeout, .tv_usec = 0};
         int ready = select(maxfd, &readfds, NULL, NULL, &tv);
         switch (ready) {
             case 0:  // TIMEOUT
@@ -214,7 +212,7 @@ int main(int argc, char *argv[]) {
         if (++playerChecking >= gameState->playerCount) playerChecking = 0;
 
         usleep(masterData.delay * 1000);
-        if (getTimeMs() - masterData.savedTime > masterData.timeout) finishGame(gameState);
+        if (getTimeMs() - masterData.savedTime > masterData.timeout * 1000) finishGame(gameState);
     }
 
     if (!(masterData.viewBinary == NULL)) {
