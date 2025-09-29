@@ -215,6 +215,44 @@ int main(int argc, char *argv[]) {
     printView(semaphores);
     printEndGame(gameState);
 
+    int status;
+    pid_t finished_pid;
+    int wait_result;
+
+    struct timespec timeout = {0, 100000000};  // 100ms
+    nanosleep(&timeout, NULL);
+
+    // Recolectar procesos que ya terminaron
+    while ((finished_pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        if (WIFEXITED(status)) {
+            printf("Proceso con PID %d terminó con estado %d\n", finished_pid, WEXITSTATUS(status));
+        } else if (WIFSIGNALED(status)) {
+            printf("Proceso con PID %d terminó por señal %d\n", finished_pid, WTERMSIG(status));
+        } else {
+            printf("Proceso con PID %d terminó de manera inesperada\n", finished_pid);
+        }
+    }
+
+    // Matar cualquier hijo restante
+    // Enviar SIGTERM a todos los hijos
+    kill(0, SIGTERM);
+    nanosleep(&timeout, NULL);  // Dar tiempo para terminación limpia
+
+    // Si aún quedan, forzar con SIGKILL
+    kill(0, SIGKILL);
+
+    // Recolectar todos los procesos restantes
+    while ((finished_pid = wait(&status)) > 0) {
+        if (WIFEXITED(status)) {
+            printf("Proceso con PID %d terminó con estado %d\n", finished_pid, WEXITSTATUS(status));
+        } else if (WIFSIGNALED(status)) {
+            printf("Proceso con PID %d fue terminado por señal %d\n", finished_pid, WTERMSIG(status));
+        } else {
+            printf("Proceso con PID %d terminó de manera inesperada\n", finished_pid);
+        }
+    }
+
+    /*
     // finalizar procesos
     int status;
     pid_t finished_pid;
@@ -227,6 +265,8 @@ int main(int argc, char *argv[]) {
             printf("Proceso con PID %d terminó de manera inesperada\n", finished_pid);
         }
     }
+    */
+
     freeResources(gameState, semaphores);
     printf("Proceso con PID: %d (Master) terminó \n", getpid());
 
@@ -455,7 +495,7 @@ static player_t playerFromBin(char *binPath, int intSuffix, unsigned short x, un
 
     snprintf(player.name, 16, "%s_%d", binPath, intSuffix);
 
-    char *argv[] = { binPath, widthStr, heightStr, NULL };
+    char *argv[] = {binPath, widthStr, heightStr, NULL};
     if (pipe(pipes[intSuffix]) == -1) {
         perror("pipe");
         exit(EXIT_FAILURE);
