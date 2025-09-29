@@ -28,11 +28,6 @@ static void draw_left_win(WINDOW *left, gameState_t* gameState, const char **asc
 static void draw_right_win(WINDOW *right, gameState_t* gameState);
 static int player_color_pair(int idx);
 
-static int int_digits(int v) {
-    char buf[32];
-    return snprintf(buf, sizeof(buf), "%d", v);
-}
-
 int main(int argc, char* argv[]) {
     if (argc < 3) {
         fprintf(stderr, "Uso: %s <shm_id> <shm_size_bytes>", argv[0]);
@@ -103,7 +98,6 @@ int main(int argc, char* argv[]) {
         /* calcular ancho requerido para la columna derecha según contenido (mapa/estado + players) */
         int right_required_w = 0;
         {
-            /* mapa/estado */
             char tmp[128];
             int l;
             l = snprintf(tmp, sizeof(tmp), "Mapa: %dx%d", gameState->width, gameState->height);
@@ -112,7 +106,6 @@ int main(int argc, char* argv[]) {
             l = snprintf(tmp, sizeof(tmp), "Estado: %s", estado);
             if (l > right_required_w) right_required_w = l;
 
-            /* players: medimos el ancho que ocuparán las dos líneas por jugador */
             playerRank_t rankings[MAX_PLAYERS];
             getPlayersRanking(gameState, rankings);
             int n = gameState->playerCount;
@@ -121,7 +114,7 @@ int main(int argc, char* argv[]) {
                 char line1[256];
                 char line2[256];
                 snprintf(line1, sizeof(line1), "%-12s %4d", pl->name, pl->score);
-                snprintf(line2, sizeof(line2), "Val: %3d   Inv: %3d   %s", pl->validReqs, pl->invalidReqs, pl->isBlocked ? "Bloq" : "");
+                snprintf(line2, sizeof(line2), "Val: %3d   Inv: %3d   Bloq", pl->validReqs, pl->invalidReqs);
                 int l1 = (int)strlen(line1);
                 int l2 = (int)strlen(line2);
                 if (l1 > right_required_w) right_required_w = l1;
@@ -140,12 +133,10 @@ int main(int argc, char* argv[]) {
         int left_w_try = cols - sep - right_required_w;
         if (left_w_try < 0) left_w_try = 0;
 
-        /* si no entra el tablero, ocultamos la columna derecha y volvemos a comprobar */
         if (left_w_try < board_w_req) {
             right_visible = false;
         }
 
-        /* Recalcular left width según right_visible */
         int left_w = right_visible ? (cols - sep - right_required_w) : cols;
 
         /* si el ASCII visible hace que el tablero no quepa verticalmente, intentamos ocultar ASCII */
@@ -157,14 +148,12 @@ int main(int argc, char* argv[]) {
             effective_rows = rows - (ascii_count + TOP_PADDING);
         }
 
-        /* ahora verificamos si el tablero entra horizontalmente incluso sin la columna derecha */
         if (left_w < board_w_req) {
-            /* intentar ocultar columna derecha (si no lo hicimos ya) */
+            /* intentar ocultar columna derecha */
             right_visible = false;
             left_w = cols;
         }
 
-        /* si tras ocultar ascii y columna derecha el tablero aún no entra vertical u horizontal -> pedir agrandar */
         bool board_fits_vertically = (effective_rows >= board_h_req);
         bool board_fits_horizontally = (left_w >= board_w_req);
 
@@ -183,13 +172,10 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        /* Con validación hecha, asignamos tamaños reales de ventanas */
         int right_w = right_visible ? right_required_w : 0;
-        /* asegurar que left_w + sep + right_w == cols (salvo redondeos) */
         left_w = right_visible ? (cols - sep - right_w) : cols;
         int win_h = rows;
 
-        /* crear/reubicar ventanas si es necesario */
         if (left_win == NULL || size_changed) {
             if (left_win) { delwin(left_win); left_win = NULL; }
             left_win = newwin(win_h, left_w, 0, 0);
@@ -233,8 +219,7 @@ if (left_win) werase(left_win);
 if (right_win) werase(right_win);
 
 bool ascii_visible_final = true;
-int rows, cols;
-getmaxyx(stdscr, rows, cols);
+int rows = getmaxy(stdscr);
 int ascii_height = ascii_count + 1 + TOP_PADDING;
 
 if (rows - ascii_height < (int)gameState->height) {
@@ -275,7 +260,7 @@ static void draw_left_win(WINDOW *left, gameState_t* gameState, const char **asc
 
     int board_start_y = TOP_PADDING;
     if (ascii_visible && ascii_lines && ascii_count > 0) {
-        /* imprimir titulo en ASCII art centrado en la parte superior */
+        /* imprimir titulo en ASCII art */
         for (int i = 0; i < ascii_count; ++i) {
             const char *line = ascii_lines[i];
             int lx = (win_w - (int)strlen(line)) / 2;
@@ -329,7 +314,6 @@ static void draw_right_win(WINDOW *right, gameState_t* gameState) {
     int win_h, win_w; getmaxyx(right, win_h, win_w);
     werase(right);
 
-    /* Map dimensions and state at top-right area (left-aligned inside right window) */
     char mapbuf[64]; snprintf(mapbuf, sizeof(mapbuf), "Mapa: %dx%d", gameState->width, gameState->height);
     char statebuf[64]; const char* estado = gameState->finished ? "Finalizado" : "En juego"; snprintf(statebuf, sizeof(statebuf), "Estado: %s", estado);
     mvwprintw(right, 0, 1, "%s", mapbuf);
@@ -341,14 +325,12 @@ static void draw_right_win(WINDOW *right, gameState_t* gameState) {
     getPlayersRanking(gameState, rankings);
     int n = gameState->playerCount;
 
-    /* Start after the separator */
     int start_y = 3;
     int cur_y = start_y;
     for (int i = 0; i < n; ++i) {
         if (cur_y >= win_h) break;
         player_t *pl = rankings[i].player;
         int pair = player_color_pair(rankings[i].originalIndex);
-        /* primera linea: nombre y score */
         if (pair) wattron(right, COLOR_PAIR(pair) | A_BOLD);
         char line1[128];
         snprintf(line1, sizeof(line1), "%-12s %4d", pl->name, pl->score);
@@ -356,14 +338,13 @@ static void draw_right_win(WINDOW *right, gameState_t* gameState) {
         if (pair) wattroff(right, COLOR_PAIR(pair) | A_BOLD);
         cur_y++;
         if (cur_y >= win_h) break;
-        /* segunda linea: Val / Inv / Bloq */
         char line2[128];
-        snprintf(line2, sizeof(line2), "Val: %d   Inv: %d   %s", pl->validReqs, pl->invalidReqs, pl->isBlocked ? "bloq" : "");
+        snprintf(line2, sizeof(line2), "Val: %d   Inv: %d   %s", pl->validReqs, pl->invalidReqs, pl->isBlocked ? "Bloq" : "");
         mvwprintw(right, cur_y, 1, "%s", line2);
         cur_y++;
         /* linea en blanco entre jugadores */
         if (cur_y < win_h) {
-            mvwprintw(right, cur_y, 1, "");
+            mvwprintw(right, cur_y, 1, " ");
             cur_y++;
         }
     }
