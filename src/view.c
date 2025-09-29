@@ -1,20 +1,3 @@
-/*
- * view.c (ncurses + UTF-8 characters, double-buffered with left/right layout)
- *
- * - Lado izquierdo: ASCII art (título) y debajo el tablero.
- * - Lado derecho: dimensiones del mapa, estado y columna con puntajes de jugadores.
- *
- * Usa:
- *  - ■ para celdas tomadas
- *  - ඞ para jugador
- *
- * Compilar:
- *  gcc src/view.c -o bin/view -lncursesw -pthread -lrt
- *
- * Asegurate de guardar el archivo en UTF-8 y de tener locale UTF-8
- * (setlocale(LC_ALL, "") está presente).
- */
-
 #include <fcntl.h>
 #include <locale.h>
 #include <ncurses.h>
@@ -35,14 +18,13 @@
 #define PLAYER_BOX_H 1
 #define MIN_COLS_REQUIRED 40
 #define MIN_LINES_REQUIRED 12
+#define TOP_PADDING 1
 
-/* símbolos UTF-8 */
 #define TAKE_CHAR "■"
 #define PLAYER_CHAR "ඞ"
 
-/* forward */
 static void init_colors_ncurses(void);
-static void draw_left_win(WINDOW *left, gameState_t* gameState, const char **ascii_lines, int ascii_count);
+static void draw_left_win(WINDOW *left, gameState_t* gameState, const char **ascii_lines, int ascii_count, bool ascii_visible);
 static void draw_right_win(WINDOW *right, gameState_t* gameState);
 static int player_color_pair(int idx);
 
@@ -79,13 +61,13 @@ int main(int argc, char* argv[]) {
     WINDOW *right_win = NULL;
     int last_rows = -1, last_cols = -1;
 
-    /* ASCII art (5 líneas) */
+    /* Chomp Champs en ASCII */
     const char *ascii_lines[] = {
-        "   ___ _                      ___ _                       ",
-        "  / __| |_  ___ _ __  _ __   / __| |_  __ _ _ __  _ __ ___",
-        " | (__| ' \\/ _ \\ '  \\| '_ \\ | (__| ' \\/ _` | '  \\| '_ (_-<",
-        "  \\___|_||_\\___/_|_|_| .__/  \\___|_||_\\__,_|_|_|_| .__/__/",
-        "                     |_|                         |_|      "
+        "  ___ _                      ___ _                       ",
+        " / __| |_  ___ _ __  _ __   / __| |_  __ _ _ __  _ __ ___",
+        "| (__| ' \\/ _ \\ '  \\| '_ \\ | (__| ' \\/ _` | '  \\| '_ (_-<",
+        " \\___|_||_\\___/_|_|_| .__/  \\___|_||_\\__,_|_|_|_| .__/__/",
+        "                    |_|                         |_|      "
     };
     const int ascii_count = sizeof(ascii_lines)/sizeof(ascii_lines[0]);
 
@@ -109,15 +91,91 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        /* calcular columnas: left 60%, right 40% con 1 columna de separación */
-        int left_w = (cols * 60) / 100;
-        if (left_w < 20) left_w = cols - 20; /* fallback si terminal pequeña */
+        /* cálculos para decidir si mostrar ASCII y/o columna derecha, priorizando tablero completo */
+        int board_w_req = (int)gameState->width * CELL_W;
+        int board_h_req = (int)gameState->height;
+
+        /* calcular ancho requerido para la columna derecha según contenido (mapa/estado + players) */
+        int right_required_w = 0;
+        {
+            char tmp[128];
+            int l;
+            l = snprintf(tmp, sizeof(tmp), "Mapa: %dx%d", gameState->width, gameState->height);
+            if (l > right_required_w) right_required_w = l;
+            const char* estado = gameState->finished ? "Finalizado" : "En juego";
+            l = snprintf(tmp, sizeof(tmp), "Estado: %s", estado);
+            if (l > right_required_w) right_required_w = l;
+
+            playerRank_t rankings[MAX_PLAYERS];
+            getPlayersRanking(gameState, rankings);
+            int n = gameState->playerCount;
+            for (int i = 0; i < n; ++i) {
+                player_t *pl = rankings[i].player;
+                char line1[256];
+                char line2[256];
+                snprintf(line1, sizeof(line1), "%-12s %4d", pl->name, pl->score);
+                snprintf(line2, sizeof(line2), "Val: %3d   Inv: %3d   Bloq", pl->validReqs, pl->invalidReqs);
+                int l1 = (int)strlen(line1);
+                int l2 = (int)strlen(line2);
+                if (l1 > right_required_w) right_required_w = l1;
+                if (l2 > right_required_w) right_required_w = l2;
+            }
+            right_required_w += 2;
+            if (right_required_w < 20) right_required_w = 20;
+        }
+
         int sep = 1;
-        int right_w = cols - left_w - sep;
-        if (right_w < 20) { right_w = 20; left_w = cols - right_w - sep; }
+        bool ascii_visible = true;
+        bool right_visible = true;
+
+        /* ASCII visible y columna derecha visible */
+        int effective_rows = rows - (ascii_visible ? (ascii_count + 1) : 0);
+        int left_w_try = cols - sep - right_required_w;
+        if (left_w_try < 0) left_w_try = 0;
+
+        if (left_w_try < board_w_req) {
+            right_visible = false;
+        }
+
+        int left_w = right_visible ? (cols - sep - right_required_w) : cols;
+
+        /* si el ASCII visible hace que el tablero no quepa verticalmente, intentamos ocultar ASCII */
+        if ((rows - (ascii_count + 1)) < board_h_req) {
+            /* ocultar ascii y volver a calcular */
+            ascii_visible = false;
+            effective_rows = rows - TOP_PADDING;
+        } else {
+            effective_rows = rows - (ascii_count + TOP_PADDING);
+        }
+
+        if (left_w < board_w_req) {
+            /* intentar ocultar columna derecha */
+            right_visible = false;
+            left_w = cols;
+        }
+
+        bool board_fits_vertically = (effective_rows >= board_h_req);
+        bool board_fits_horizontally = (left_w >= board_w_req);
+
+        if (!board_fits_vertically || !board_fits_horizontally) {
+            int rows_needed = board_h_req + (ascii_visible ? (ascii_count + 1 + TOP_PADDING) : TOP_PADDING);
+            int cols_needed = board_w_req + (right_visible ? (sep + right_required_w) : 0);
+
+            werase(stdscr);
+            mvwprintw(stdscr, 0, 0, "No hay espacio suficiente para mostrar el tablero completo.");
+            mvwprintw(stdscr, 1, 0, "Necesitas al menos %d filas x %d columnas para ver todo (filas x columnas).", rows_needed, cols_needed);
+            mvwprintw(stdscr, 2, 0, "Redimensioná la terminal y volvé a intentarlo.");
+            wnoutrefresh(stdscr);
+            doupdate();
+            sem_post(&semaphores->viewToMaster);
+            napms(150);
+            continue;
+        }
+
+        int right_w = right_visible ? right_required_w : 0;
+        left_w = right_visible ? (cols - sep - right_w) : cols;
         int win_h = rows;
 
-        /* crear/reubicar ventanas si es necesario */
         if (left_win == NULL || size_changed) {
             if (left_win) { delwin(left_win); left_win = NULL; }
             left_win = newwin(win_h, left_w, 0, 0);
@@ -129,22 +187,26 @@ int main(int argc, char* argv[]) {
             werase(left_win);
         }
 
-        if (right_win == NULL || size_changed) {
-            if (right_win) { delwin(right_win); right_win = NULL; }
-            right_win = newwin(win_h, right_w, 0, left_w + sep);
-            if (!right_win) { endwin(); fprintf(stderr, "No se pudo crear right_win"); exit(EXIT_FAILURE); }
-            leaveok(right_win, TRUE); syncok(right_win, FALSE);
+        if (right_visible) {
+            if (right_win == NULL || size_changed) {
+                if (right_win) { delwin(right_win); right_win = NULL; }
+                right_win = newwin(win_h, right_w, 0, left_w + sep);
+                if (!right_win) { endwin(); fprintf(stderr, "No se pudo crear right_win"); exit(EXIT_FAILURE); }
+                leaveok(right_win, TRUE); syncok(right_win, FALSE);
+            } else {
+                mvwin(right_win, 0, left_w + sep);
+                wresize(right_win, win_h, right_w);
+                werase(right_win);
+            }
         } else {
-            mvwin(right_win, 0, left_w + sep);
-            wresize(right_win, win_h, right_w);
-            werase(right_win);
+            if (right_win) { delwin(right_win); right_win = NULL; }
         }
 
-        draw_left_win(left_win, gameState, ascii_lines, ascii_count);
-        draw_right_win(right_win, gameState);
+        draw_left_win(left_win, gameState, ascii_lines, ascii_count, ascii_visible);
+        if (right_visible && right_win) draw_right_win(right_win, gameState);
 
         wnoutrefresh(left_win);
-        wnoutrefresh(right_win);
+        if (right_visible && right_win) wnoutrefresh(right_win);
 
         doupdate();
 
@@ -152,15 +214,26 @@ int main(int argc, char* argv[]) {
         napms(10);
     }
 
-    sem_wait(&semaphores->masterToView);
-    if (left_win) werase(left_win);
-    if (right_win) werase(right_win);
-    draw_left_win(left_win ? left_win : stdscr, gameState, ascii_lines, ascii_count);
-    draw_right_win(right_win ? right_win : stdscr, gameState);
-    if (left_win) wnoutrefresh(left_win);
-    if (right_win) wnoutrefresh(right_win);
-    doupdate();
-    sem_post(&semaphores->viewToMaster);
+sem_wait(&semaphores->masterToView);
+if (left_win) werase(left_win);
+if (right_win) werase(right_win);
+
+bool ascii_visible_final = true;
+int rows = getmaxy(stdscr);
+int ascii_height = ascii_count + 1 + TOP_PADDING;
+
+if (rows - ascii_height < (int)gameState->height) {
+    ascii_visible_final = false;
+}
+
+draw_left_win(left_win ? left_win : stdscr, gameState, ascii_lines, ascii_count, ascii_visible_final);
+draw_right_win(right_win ? right_win : stdscr, gameState);
+
+if (left_win) wnoutrefresh(left_win);
+if (right_win) wnoutrefresh(right_win);
+doupdate();
+sleep(3);
+sem_post(&semaphores->viewToMaster);
 
     if (left_win) { delwin(left_win); left_win = NULL; }
     if (right_win) { delwin(right_win); right_win = NULL; }
@@ -179,21 +252,24 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
-static void draw_left_win(WINDOW *left, gameState_t* gameState, const char **ascii_lines, int ascii_count) {
+static void draw_left_win(WINDOW *left, gameState_t* gameState, const char **ascii_lines, int ascii_count, bool ascii_visible) {
     if (!left || !gameState) return;
     int win_h, win_w; getmaxyx(left, win_h, win_w);
 
     werase(left);
 
-    /* imprimir ASCII art centrado en la parte superior */
-    for (int i = 0; i < ascii_count; ++i) {
-        const char *line = ascii_lines[i];
-        int lx = (win_w - (int)strlen(line)) / 2;
-        if (lx < 0) lx = 0;
-        mvwprintw(left, i, lx, "%s", line);
+    int board_start_y = TOP_PADDING;
+    if (ascii_visible && ascii_lines && ascii_count > 0) {
+        /* imprimir titulo en ASCII art */
+        for (int i = 0; i < ascii_count; ++i) {
+            const char *line = ascii_lines[i];
+            int lx = (win_w - (int)strlen(line)) / 2;
+            if (lx < 0) lx = 0;
+            mvwprintw(left, i, lx, "%s", line);
+        }
+        board_start_y += ascii_count + 1;
     }
 
-    int board_start_y = ascii_count + 1;
     int available_h = win_h - board_start_y;
     if (available_h <= 0) return;
 
@@ -238,7 +314,6 @@ static void draw_right_win(WINDOW *right, gameState_t* gameState) {
     int win_h, win_w; getmaxyx(right, win_h, win_w);
     werase(right);
 
-    /* Map dimensions and state at top-right area (left-aligned inside right window) */
     char mapbuf[64]; snprintf(mapbuf, sizeof(mapbuf), "Mapa: %dx%d", gameState->width, gameState->height);
     char statebuf[64]; const char* estado = gameState->finished ? "Finalizado" : "En juego"; snprintf(statebuf, sizeof(statebuf), "Estado: %s", estado);
     mvwprintw(right, 0, 1, "%s", mapbuf);
@@ -251,17 +326,30 @@ static void draw_right_win(WINDOW *right, gameState_t* gameState) {
     int n = gameState->playerCount;
 
     int start_y = 3;
-    for (int i = 0; i < n && (start_y + i) < win_h; ++i) {
+    int cur_y = start_y;
+    for (int i = 0; i < n; ++i) {
+        if (cur_y >= win_h) break;
         player_t *pl = rankings[i].player;
         int pair = player_color_pair(rankings[i].originalIndex);
         if (pair) wattron(right, COLOR_PAIR(pair) | A_BOLD);
-        char line[128]; snprintf(line, sizeof(line), "%-12s  %4d", pl->name, pl->score);
-        mvwprintw(right, start_y + i, 1, "%s", line);
+        char line1[128];
+        snprintf(line1, sizeof(line1), "%-12s %4d", pl->name, pl->score);
+        mvwprintw(right, cur_y, 1, "%s", line1);
         if (pair) wattroff(right, COLOR_PAIR(pair) | A_BOLD);
+        cur_y++;
+        if (cur_y >= win_h) break;
+        char line2[128];
+        snprintf(line2, sizeof(line2), "Val: %d   Inv: %d   %s", pl->validReqs, pl->invalidReqs, pl->isBlocked ? "Bloq" : "");
+        mvwprintw(right, cur_y, 1, "%s", line2);
+        cur_y++;
+        /* linea en blanco entre jugadores */
+        if (cur_y < win_h) {
+            mvwprintw(right, cur_y, 1, " ");
+            cur_y++;
+        }
     }
 }
 
-/* Inicializa pares de colores (1..9) segun indice de jugador */
 static void init_colors_ncurses(void) {
     init_pair(1, COLOR_RED,    -1);
     init_pair(2, COLOR_GREEN,  -1);
@@ -274,7 +362,6 @@ static void init_colors_ncurses(void) {
     init_pair(9, COLOR_MAGENTA,-1);
 }
 
-/* Devuelve el numero de pair color para el jugador (1..9). Si no hay color, 0 */
 static int player_color_pair(int idx) {
     if (idx < 0 || idx >= MAX_PLAYERS) return 0;
     return idx + 1; /* init_pair 1..9 */
