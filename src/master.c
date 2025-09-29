@@ -50,13 +50,15 @@ typedef struct masterDataStruct {
     char *viewBinary;
     char *playerBinaries[MAXPLAYERS];
     int playerCount;
+    unsigned long long lastValidReqTime[9];
     unsigned long long savedTime;
     char *widthStr;
     char *heightStr;
+
 } masterData_t;
 
 // Variables Globales
-static masterData_t masterData = {DEFAULTWIDTH, DEFAULTHEIGHT, DEFAULTDELAY, DEFAULTTIMEOUT, 0, NULL, {NULL}, 0, 0, "10", "10"};
+static masterData_t masterData = {DEFAULTWIDTH, DEFAULTHEIGHT, DEFAULTDELAY, DEFAULTTIMEOUT, 0, NULL, {NULL}, 0, {0}, 0, "10", "10"};
 static int pipes[MAXPLAYERS][2];
 
 // Prototipos de funciones
@@ -139,12 +141,10 @@ int main(int argc, char *argv[]) {
         printf("Error: se requieren al menos %d jugadores\n", MINPLAYERS);
         exit(EXIT_FAILURE);
     }
-
     createShms(masterData.width, masterData.height);
     gameState_t *gameState;
     semaphores_t *semaphores;
     openShms(masterData.width, masterData.height, &gameState, &semaphores);
-
     semaphoresInit(semaphores);
     gameStateInit(gameState, masterData.width, masterData.height, masterData.seed, masterData.playerCount, masterData.playerBinaries);
 
@@ -177,6 +177,7 @@ int main(int argc, char *argv[]) {
                     exit(EXIT_FAILURE);
                 }
             case 0:  // TIMEOUT
+                checkBlockedPlayers(gameState);
                 continue;
             default:
                 for (int i = 0; i < masterData.playerCount; i++) {
@@ -188,29 +189,27 @@ int main(int argc, char *argv[]) {
 
         if (gameState->playerArray[playerChecking].isBlocked) {
             if (++playerChecking >= gameState->playerCount) playerChecking = 0;
-            continue;
-        }
-
-        // Procesar siguiente movimiento
-        sem_wait(&semaphores->masterMutex);
-        sem_wait(&semaphores->gameStateMutex);
-        unsigned char nextMove = -1;
-        read(pipes[playerChecking][0], &nextMove, 1);
-        sem_post(&semaphores->playerSems[playerChecking]);
-        if (nextMove == EOF) {
-            gameState->playerArray[playerChecking].isBlocked = true;
         } else {
-            updatePlayerPosition(gameState, &gameState->playerArray[playerChecking], playerChecking, nextMove);
-            checkBlockedPlayers(gameState);
-            printView(semaphores);
-            checkIfAllBlocked(gameState);
+            // Procesar siguiente movimiento
+            sem_wait(&semaphores->masterMutex);
+            sem_wait(&semaphores->gameStateMutex);
+            unsigned char nextMove = -1;
+            read(pipes[playerChecking][0], &nextMove, 1);
+            sem_post(&semaphores->playerSems[playerChecking]);
+            if (nextMove == EOF) {
+                gameState->playerArray[playerChecking].isBlocked = true;
+            } else {
+                updatePlayerPosition(gameState, &gameState->playerArray[playerChecking], playerChecking, nextMove);
+                printView(semaphores);
+            }
+            sem_post(&semaphores->gameStateMutex);
+            sem_post(&semaphores->masterMutex);
+            if (++playerChecking >= gameState->playerCount) playerChecking = 0;
         }
-        sem_post(&semaphores->gameStateMutex);
-        sem_post(&semaphores->masterMutex);
-        if (++playerChecking >= gameState->playerCount) playerChecking = 0;
 
-        usleep(masterData.delay * 1000);
+        checkBlockedPlayers(gameState);
         if (getTimeMs() - masterData.savedTime > masterData.timeout * 1000) finishGame(gameState);
+        usleep(masterData.delay * 1000);
     }
 
     printView(semaphores);
@@ -248,6 +247,7 @@ static void finishGame(gameState_t *gameState) {
 }
 
 static void printEndGame(gameState_t *gameState) {
+    printf("\n");
     printf("JUEGO TERMINADO\n");
 
     playerRank_t rankings[MAXPLAYERS];
@@ -261,9 +261,14 @@ static void printEndGame(gameState_t *gameState) {
         for (int i = 0; i < winners; i++) printf("%s ", rankings[i].player->name);
         printf("\n");
     } else {
-        printf("GANADOR: %s ", rankings[0].player->name);
+        printf("GANADOR: %s", rankings[0].player->name);
         printf("\n\n");
     }
+    printf("RANKING FINAL: \n");
+    for (int i = 0; i < gameState->playerCount; i++) {
+        printf("%d. Jugador %d: %s, Puntaje: %d\n", i + 1, i, rankings[i].player->name, rankings[i].player->score);
+    }
+    printf("\n");
 }
 
 static void gameStateInit(gameState_t *gameState, unsigned short width, unsigned short height, const int seed, const int playerCount, char **playerBins) {
@@ -432,8 +437,10 @@ static void checkBlockedPlayers(gameState_t *gameState) {
                 }
             }
             player->isBlocked = isBlocked;
+            if (getTimeMs() - masterData.lastValidReqTime[i] > masterData.timeout * 1000) player->isBlocked = true;
         }
     }
+    checkIfAllBlocked(gameState);
 }
 
 static void checkIfAllBlocked(gameState_t *gameState) {
@@ -463,6 +470,8 @@ static player_t *playerFromBin(char *binPath, int intSuffix, unsigned short x, u
     player->y = y;
     player->pid = pid;
     player->isBlocked = false;
+
+    masterData.lastValidReqTime[intSuffix] = getTimeMs();
 
     return player;
 }
@@ -554,8 +563,9 @@ static void updatePlayerPosition(gameState_t *gamestate, player_t *player, int p
         player->y = newPosition.y;
         player->validReqs++;
         player->score += gamestate->board[player->y * gamestate->width + player->x];
-        gamestate->board[player->y * gamestate->width + player->x] = (-1) * playerIndex;  // Comer la celda
+        gamestate->board[player->y * gamestate->width + player->x] = (-1) * playerIndex;
         masterData.savedTime = getTimeMs();
+        masterData.lastValidReqTime[playerIndex] = getTimeMs();
     } else {
         player->invalidReqs++;
     }
