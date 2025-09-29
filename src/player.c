@@ -23,7 +23,10 @@ int main(int argc, char* argv[]) {
     gameState_t* gameState;
     semaphores_t* semaphores;
     openReadShm(strtoul(argv[1], NULL, 10), strtoul(argv[2], NULL, 10), &gameState, &semaphores);
+    openReadShm(strtoul(argv[1], NULL, 10), strtoul(argv[2], NULL, 10), &gameState, &semaphores);
 
+    gameState_t* savedGameState = malloc(sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
+    checkMalloc(savedGameState, "malloc failed for savedGameState", EXIT_FAILURE);
     gameState_t* savedGameState = malloc(sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
     checkMalloc(savedGameState, "malloc failed for savedGameState", EXIT_FAILURE);
 
@@ -51,6 +54,7 @@ int main(int argc, char* argv[]) {
     free(savedGameState);
 
     munmap(gameState, sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
+    munmap(gameState, sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
     munmap(semaphores, sizeof(semaphores_t));
     return 0;
 }
@@ -66,7 +70,9 @@ unsigned char getNextMovement(gameState_t* gameState, int myIndex) {
 
     if (y > 0) direcciones_validas[num_direcciones++] = NORTH;
     if (y < (gameState->height - 1)) direcciones_validas[num_direcciones++] = SOUTH;
+    if (y < (gameState->height - 1)) direcciones_validas[num_direcciones++] = SOUTH;
     if (x > 0) direcciones_validas[num_direcciones++] = WEST;
+    if (x < (gameState->width - 1)) direcciones_validas[num_direcciones++] = EAST;
     if (x < (gameState->width - 1)) direcciones_validas[num_direcciones++] = EAST;
     if (y > 0 && x > 0) direcciones_validas[num_direcciones++] = NORTHWEST;
     if (y > 0 && x < (gameState->width - 1)) direcciones_validas[num_direcciones++] = NORTHEAST;
@@ -80,6 +86,7 @@ unsigned char getNextMovement(gameState_t* gameState, int myIndex) {
     for (int i = 0; i < num_direcciones; i++) {
         short newX = getX(direcciones_validas[i]);
         short newY = getY(direcciones_validas[i]);
+        short newValue = gameState->board[gameState->width * (y + newY) + x + newX];
         short newValue = gameState->board[gameState->width * (y + newY) + x + newX];
         if (newValue > bestValue) {
             bestX = newX;

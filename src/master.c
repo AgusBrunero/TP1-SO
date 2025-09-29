@@ -110,7 +110,7 @@ static void checkIfAllBlocked(gameState_t *gameState);
  * Crea un nuevo player_t inicializado con los parametros dados
  * en caso de error termina el programa
  */
-static player_t *playerFromBin(char *binPath, int intSuffix, unsigned short x, unsigned short y, char *widthStr, char *heightStr);
+static player_t playerFromBin(char *binPath, int intSuffix, unsigned short x, unsigned short y, char *widthStr, char *heightStr);
 
 /*
  * utiliza clock_gettime() y retorna el tiempo en ms
@@ -280,7 +280,7 @@ static void gameStateInit(gameState_t *gameState, unsigned short width, unsigned
 
     for (int i = 0; i < playerCount; i++) {
         point_t spawnPoint = getSpawnPoint(i, gameState);
-        gameState->playerArray[i] = *playerFromBin(playerBins[i], i, spawnPoint.x, spawnPoint.y, masterData.widthStr, masterData.heightStr);
+        gameState->playerArray[i] = playerFromBin(playerBins[i], i, spawnPoint.x, spawnPoint.y, masterData.widthStr, masterData.heightStr);
     }
 }
 
@@ -450,26 +450,30 @@ static void checkIfAllBlocked(gameState_t *gameState) {
     if (allBlocked) gameState->finished = true;
 }
 
-static player_t *playerFromBin(char *binPath, int intSuffix, unsigned short x, unsigned short y, char *widthStr, char *heightStr) {
-    player_t *player = malloc(sizeof(player_t));
-    checkMalloc(player, "malloc failed for player", EXIT_FAILURE);
+static player_t playerFromBin(char *binPath, int intSuffix, unsigned short x, unsigned short y, char *widthStr, char *heightStr) {
+    player_t player;
 
-    char *argv[] = {binPath, widthStr, heightStr, NULL};
-    pipe(pipes[intSuffix]);
-    pid_t pid = newPipedProc(binPath, pipes[intSuffix][1], argv);
-    if (pid == -1) {
-        printf("Error creando proceso jugador %s con binario: %s\n", player->name, binPath);
+    snprintf(player.name, 16, "%s_%d", binPath, intSuffix);
+
+    char *argv[] = { binPath, widthStr, heightStr, NULL };
+    if (pipe(pipes[intSuffix]) == -1) {
+        perror("pipe");
         exit(EXIT_FAILURE);
     }
 
-    snprintf(player->name, 16, "%s_%d", binPath, intSuffix);
-    player->score = 0;
-    player->invalidReqs = 0;
-    player->validReqs = 0;
-    player->x = x;
-    player->y = y;
-    player->pid = pid;
-    player->isBlocked = false;
+    pid_t pid = newPipedProc(binPath, pipes[intSuffix][1], argv);
+    if (pid == -1) {
+        fprintf(stderr, "Error creando proceso jugador %s con binario: %s\n", player.name, binPath);
+        exit(EXIT_FAILURE);
+    }
+
+    player.score = 0;
+    player.invalidReqs = 0;
+    player.validReqs = 0;
+    player.x = x;
+    player.y = y;
+    player.pid = pid;
+    player.isBlocked = false;
 
     masterData.lastValidReqTime[intSuffix] = getTimeMs();
 
