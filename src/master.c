@@ -12,6 +12,7 @@
 #include <sys/mman.h>  // mmap, munmap, MAP_SHARED, PROT_READ, PROT_WRITE
 #include <sys/select.h>
 #include <sys/shm.h>  // shm_open, shm_unlink
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>  // ftruncate, close
@@ -101,6 +102,8 @@ static point_t getSpawnPoint(int playerIndex, gameState_t *gamestate);
  */
 static void checkBlockedPlayers(gameState_t *gameState);
 
+static void checkIfAllBlocked(gameState_t *gameState);
+
 /*
  * Crea un nuevo player_t inicializado con los parametros dados
  * en caso de error termina el programa
@@ -117,7 +120,11 @@ static void updatePlayerPosition(gameState_t *gamestate, player_t *player, int p
 
 static void saveParams(int argc, char *argv[]);
 
+bool isDirectory(const char *path);
+
 static void finishGame(gameState_t *gameState);
+
+static void printView(semaphores_t *semaphores);
 
 static void printEndGame(gameState_t *gameState);
 
@@ -128,6 +135,10 @@ static void freeResources();
 
 int main(int argc, char *argv[]) {
     saveParams(argc, argv);
+    if (masterData.playerCount < MINPLAYERS) {
+        printf("Error: se requieren al menos %d jugadores\n", MINPLAYERS);
+        exit(EXIT_FAILURE);
+    }
 
     createShms(masterData.width, masterData.height);
     gameState_t *gameState;
@@ -141,9 +152,9 @@ int main(int argc, char *argv[]) {
         char *const viewArgs[] = {(char *)masterData.viewBinary, masterData.widthStr, masterData.heightStr, NULL};
         pid_t view_pid = newProc(masterData.viewBinary, viewArgs);
         checkPid(view_pid, "Error creando proceso vista", EXIT_FAILURE);
-        sem_post(&semaphores->masterToView);
-        sem_wait(&semaphores->viewToMaster);
     }
+
+    printView(semaphores);
 
     fd_set readfds;
     FD_ZERO(&readfds);
@@ -157,17 +168,16 @@ int main(int argc, char *argv[]) {
     unsigned char playerChecking = 0;
 
     while (!gameState->finished) {
-        struct timeval tv = {.tv_sec = masterData.timeout, .tv_usec = 0};
+        struct timeval tv = {.tv_sec = 0, .tv_usec = 100000};  // masterData.timeout, .tv_usec = 0};
         int ready = select(maxfd, &readfds, NULL, NULL, &tv);
         switch (ready) {
-            case 0:  // TIMEOUT
-                finishGame(gameState);
-                break;
             case -1:
-                if (errno == EINTR) continue;
-                perror("select");
-                exit(EXIT_FAILURE);
-                break;
+                if (!(errno == EINTR)) {
+                    perror("select");
+                    exit(EXIT_FAILURE);
+                }
+            case 0:  // TIMEOUT
+                continue;
             default:
                 for (int i = 0; i < masterData.playerCount; i++) {
                     if (FD_ISSET(pipes[playerChecking][0], &readfds)) break;
@@ -181,49 +191,29 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        sem_wait(&semaphores->masterMutex);     // Bloqueo a los jugadores al inicio del loop
-        sem_wait(&semaphores->gameStateMutex);  // Espero a que terminen los que ya estaban leyendo
-
+        // Procesar siguiente movimiento
+        sem_wait(&semaphores->masterMutex);
+        sem_wait(&semaphores->gameStateMutex);
         unsigned char nextMove = -1;
         read(pipes[playerChecking][0], &nextMove, 1);
         sem_post(&semaphores->playerSems[playerChecking]);
-
         if (nextMove == EOF) {
             gameState->playerArray[playerChecking].isBlocked = true;
         } else {
             updatePlayerPosition(gameState, &gameState->playerArray[playerChecking], playerChecking, nextMove);
             checkBlockedPlayers(gameState);
-
-            if (!(masterData.viewBinary == NULL)) {
-                sem_post(&semaphores->masterToView);
-                sem_wait(&semaphores->viewToMaster);
-            }
-
-            bool allBlocked = true;
-            for (int i = 0; i < gameState->playerCount; i++) {
-                if (!gameState->playerArray[i].isBlocked) allBlocked = false;
-            }
-            if (allBlocked) gameState->finished = true;
+            printView(semaphores);
+            checkIfAllBlocked(gameState);
         }
-
         sem_post(&semaphores->gameStateMutex);
         sem_post(&semaphores->masterMutex);
-
         if (++playerChecking >= gameState->playerCount) playerChecking = 0;
 
         usleep(masterData.delay * 1000);
         if (getTimeMs() - masterData.savedTime > masterData.timeout * 1000) finishGame(gameState);
     }
 
-    if (!(masterData.viewBinary == NULL)) {
-        sem_post(&semaphores->masterToView);
-        sem_wait(&semaphores->viewToMaster);
-    }
-
-    for (int i = 0; i < masterData.playerCount; i++) {
-        sem_post(&semaphores->playerSems[i]);
-    }
-
+    printView(semaphores);
     printEndGame(gameState);
 
     // finalizar procesos
@@ -242,6 +232,12 @@ int main(int argc, char *argv[]) {
     printf("Proceso con PID: %d (Master) terminó \n", getpid());
 
     return 0;
+}
+
+static void printView(semaphores_t *semaphores) {
+    if (masterData.viewBinary == NULL) return;
+    sem_post(&semaphores->masterToView);
+    sem_wait(&semaphores->viewToMaster);
 }
 
 static void finishGame(gameState_t *gameState) {
@@ -440,6 +436,13 @@ static void checkBlockedPlayers(gameState_t *gameState) {
     }
 }
 
+static void checkIfAllBlocked(gameState_t *gameState) {
+    bool allBlocked = true;
+    for (int i = 0; i < gameState->playerCount; i++)
+        if (!gameState->playerArray[i].isBlocked) allBlocked = false;
+    if (allBlocked) gameState->finished = true;
+}
+
 static player_t *playerFromBin(char *binPath, int intSuffix, unsigned short x, unsigned short y, char *widthStr, char *heightStr) {
     player_t *player = malloc(sizeof(player_t));
     checkMalloc(player, "malloc failed for player", EXIT_FAILURE);
@@ -593,16 +596,35 @@ static void saveParams(int argc, char *argv[]) {
                 masterData.seed = atoi(optarg);
                 break;
             case 'v':
-                masterData.viewBinary = optarg;
+                if (isDirectory(optarg)) {
+                    printf("Vista con binario: %s añadida correctamente.\n", optarg);
+                    masterData.viewBinary = optarg;
+                } else {
+                    printf("ERROR: Vista con binario: %s NO añadida.\n", optarg);
+                    masterData.viewBinary = NULL;
+                }
                 break;
+
             case 'p':
                 optind--;
                 while (optind < argc && argv[optind] && argv[optind][0] != '-' && masterData.playerCount < MAXPLAYERS) {
-                    masterData.playerBinaries[masterData.playerCount++] = argv[optind++];
+                    printf("Intentando agregar jugador con binario: %s\n", argv[optind]);
+                    if (isDirectory(argv[optind])) {
+                        printf("Jugador con binario: %s agregado.\n", argv[optind]);
+                        masterData.playerBinaries[masterData.playerCount++] = argv[optind++];
+                    } else {
+                        printf("ERROR: Jugador con binario: %s NO agregado.\n", argv[optind]);
+                        optind++;
+                    }
                 }
                 break;
         }
     }
+}
+
+bool isDirectory(const char *path) {
+    struct stat st;
+    return !stat(path, &st) != 0;
 }
 
 static void freeResources(gameState_t *gameState, semaphores_t *semaphores) {
