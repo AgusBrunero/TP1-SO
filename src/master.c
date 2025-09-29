@@ -60,6 +60,7 @@ typedef struct masterDataStruct {
 // Variables Globales
 static masterData_t masterData = {DEFAULTWIDTH, DEFAULTHEIGHT, DEFAULTDELAY, DEFAULTTIMEOUT, 0, NULL, {NULL}, 0, {0}, 0, "10", "10"};
 static int pipes[MAXPLAYERS][2];
+pid_t childsPids[10] = {0};
 
 // Prototipos de funciones
 
@@ -152,6 +153,7 @@ int main(int argc, char *argv[]) {
         char *const viewArgs[] = {(char *)masterData.viewBinary, masterData.widthStr, masterData.heightStr, NULL};
         pid_t view_pid = newProc(masterData.viewBinary, viewArgs);
         checkPid(view_pid, "Error creando proceso vista", EXIT_FAILURE);
+        childsPids[9] = view_pid;
     }
 
     printView(semaphores);
@@ -168,7 +170,7 @@ int main(int argc, char *argv[]) {
     unsigned char playerChecking = 0;
 
     while (!gameState->finished) {
-        struct timeval tv = {.tv_sec = 0, .tv_usec = 100000};  // masterData.timeout, .tv_usec = 0};
+        struct timeval tv = {.tv_sec = 0, .tv_usec = 100000};
         int ready = select(maxfd, &readfds, NULL, NULL, &tv);
         switch (ready) {
             case -1:
@@ -216,56 +218,36 @@ int main(int argc, char *argv[]) {
     printEndGame(gameState);
 
     int status;
-    pid_t finished_pid;
-    int wait_result;
+    for (int i = 0; i < masterData.playerCount; i++) {
+        if (childsPids[i] == 0) continue;
 
-    struct timespec timeout = {0, 100000000};  // 100ms
-    nanosleep(&timeout, NULL);
-
-    // Recolectar procesos que ya terminaron
-    while ((finished_pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        if (WIFEXITED(status)) {
-            printf("Proceso con PID %d terminó con estado %d\n", finished_pid, WEXITSTATUS(status));
-        } else if (WIFSIGNALED(status)) {
-            printf("Proceso con PID %d terminó por señal %d\n", finished_pid, WTERMSIG(status));
+        if (waitpid(childsPids[i], &status, WNOHANG) > 0) {
+            if (WIFEXITED(status)) {
+                printf("Proceso con PID %d (Player %d) terminó con estado %d\n", childsPids[i], i, WEXITSTATUS(status));
+            } else if (WIFSIGNALED(status)) {
+                printf("Proceso con PID %d (Player %d) terminó por señal %d\n", childsPids[i], i, WTERMSIG(status));
+            } else {
+                printf("Proceso con PID %d (Player %d) terminó de manera inesperada\n", childsPids[i], i);
+            }
         } else {
-            printf("Proceso con PID %d terminó de manera inesperada\n", finished_pid);
+            kill(childsPids[i], SIGTERM);
+            printf("Proceso con PID: %d (Player %d) terminado por timeout\n", childsPids[i], i);
         }
     }
-
-    // Matar cualquier hijo restante
-    // Enviar SIGTERM a todos los hijos
-    kill(0, SIGTERM);
-    nanosleep(&timeout, NULL);  // Dar tiempo para terminación limpia
-
-    // Si aún quedan, forzar con SIGKILL
-    kill(0, SIGKILL);
-
-    // Recolectar todos los procesos restantes
-    while ((finished_pid = wait(&status)) > 0) {
-        if (WIFEXITED(status)) {
-            printf("Proceso con PID %d terminó con estado %d\n", finished_pid, WEXITSTATUS(status));
-        } else if (WIFSIGNALED(status)) {
-            printf("Proceso con PID %d fue terminado por señal %d\n", finished_pid, WTERMSIG(status));
+    if (masterData.viewBinary != NULL) {
+        if (waitpid(childsPids[9], &status, WNOHANG) > 0) {
+            if (WIFEXITED(status)) {
+                printf("Proceso con PID %d (View) terminó con estado %d\n", childsPids[9], WEXITSTATUS(status));
+            } else if (WIFSIGNALED(status)) {
+                printf("Proceso con PID %d (View) terminó por señal %d\n", childsPids[9], WTERMSIG(status));
+            } else {
+                printf("Proceso con PID %d (View) terminó de manera inesperada\n", childsPids[9]);
+            }
         } else {
-            printf("Proceso con PID %d terminó de manera inesperada\n", finished_pid);
+            kill(childsPids[9], SIGTERM);
+            printf("Proceso con PID: %d (View) terminado por timeout\n", childsPids[9]);
         }
     }
-
-    /*
-    // finalizar procesos
-    int status;
-    pid_t finished_pid;
-    while ((finished_pid = wait(&status)) > 0) {
-        if (WIFEXITED(status)) {
-            printf("Proceso con PID %d terminó con estado %d\n", finished_pid, WEXITSTATUS(status));
-        } else if (WIFSIGNALED(status)) {
-            printf("Proceso con PID %d terminó por señal %d\n", finished_pid, WTERMSIG(status));
-        } else {
-            printf("Proceso con PID %d terminó de manera inesperada\n", finished_pid);
-        }
-    }
-    */
 
     freeResources(gameState, semaphores);
     printf("Proceso con PID: %d (Master) terminó \n", getpid());
@@ -506,6 +488,7 @@ static player_t playerFromBin(char *binPath, int intSuffix, unsigned short x, un
         fprintf(stderr, "Error creando proceso jugador %s con binario: %s\n", player.name, binPath);
         exit(EXIT_FAILURE);
     }
+    childsPids[intSuffix] = pid;
 
     player.score = 0;
     player.invalidReqs = 0;
