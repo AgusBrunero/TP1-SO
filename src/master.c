@@ -597,10 +597,8 @@ static void saveParams(int argc, char *argv[]) {
                 break;
             case 'v':
                 if (isDirectory(optarg)) {
-                    printf("Vista con binario: %s añadida correctamente.\n", optarg);
                     masterData.viewBinary = optarg;
                 } else {
-                    printf("ERROR: Vista con binario: %s NO añadida.\n", optarg);
                     masterData.viewBinary = NULL;
                 }
                 break;
@@ -608,12 +606,9 @@ static void saveParams(int argc, char *argv[]) {
             case 'p':
                 optind--;
                 while (optind < argc && argv[optind] && argv[optind][0] != '-' && masterData.playerCount < MAXPLAYERS) {
-                    printf("Intentando agregar jugador con binario: %s\n", argv[optind]);
                     if (isDirectory(argv[optind])) {
-                        printf("Jugador con binario: %s agregado.\n", argv[optind]);
                         masterData.playerBinaries[masterData.playerCount++] = argv[optind++];
                     } else {
-                        printf("ERROR: Jugador con binario: %s NO agregado.\n", argv[optind]);
                         optind++;
                     }
                 }
