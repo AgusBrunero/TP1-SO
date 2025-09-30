@@ -162,22 +162,26 @@ int main(int argc, char *argv[]) {
 
     printView(semaphores);
 
-    fd_set readfds;
-    FD_ZERO(&readfds);
+    fd_set totalReadFds;
+    FD_ZERO(&totalReadFds);
     int maxfd = -1;
     for (int i = 0; i < masterData.playerCount; i++) {
         if (pipes[i][0] > maxfd) maxfd = pipes[i][0];
-        FD_SET(pipes[i][0], &readfds);
+        FD_SET(pipes[i][0], &totalReadFds);
     }
     maxfd++;
 
     unsigned char playerChecking = 0;
-
-    printf("prewhile loop, playerCount %d, %s, %d\n", masterData.playerCount, masterData.viewBinary, masterData.viewBinary);
-    //usleep(10000);
     while (!gameState->finished) {
         struct timeval tv = {.tv_sec = 0, .tv_usec = 100000};
-        int ready = select(maxfd, &readfds, NULL, NULL, &tv);
+
+        fd_set readFdsCopy;
+        FD_ZERO(&readFdsCopy);
+        for (int i = 0; i < masterData.playerCount; i++) {
+            FD_SET(pipes[i][0], &readFdsCopy);
+        }
+
+        int ready = select(maxfd, &readFdsCopy, NULL, NULL, &tv);
         switch (ready) {
             case -1:
                 if (!(errno == EINTR)) {
@@ -189,20 +193,16 @@ int main(int argc, char *argv[]) {
                 continue;
             default:
                 for (int i = 0; i < masterData.playerCount; i++) {
-                    if (FD_ISSET(pipes[playerChecking][0], &readfds)) break;
+                    if (FD_ISSET(pipes[playerChecking][0], &readFdsCopy)) break;
                     if (++playerChecking >= gameState->playerCount) playerChecking = 0;
                 }
                 break;
         }
 
-        printf("posswitch\n");
-
         if (gameState->playerArray[playerChecking].isBlocked) {
-            printf("player %d is blocked\n", playerChecking);
             if (++playerChecking >= gameState->playerCount) playerChecking = 0;
         }
         else {
-            printf("player %d is not blocked\n", playerChecking);
             // Procesar siguiente movimiento
             sem_wait(&semaphores->masterMutex);
             sem_wait(&semaphores->gameStateMutex);
@@ -220,19 +220,13 @@ int main(int argc, char *argv[]) {
             if (++playerChecking >= gameState->playerCount) playerChecking = 0;
         }
 
-        printf("posifelse preCheckBlockedPlayers\n");
         checkBlockedPlayers(gameState);
-        printf("posifelse postCheckBlockedPlayers\n");
         if (getTimeMs() - masterData.savedTime > masterData.timeout * 1000) finishGame(gameState);
         usleep(masterData.delay * 1000);
-        printf("posUsleep\n");
     }
 
-    printf("preprintview endgame\n");
     printView(semaphores);
-    printf("postprintview \n");
     printEndGame(gameState);
-    printf("postprintendgame \n");
 
      // Desbloquear a todos los jugadores para que puedan terminar
     for (int i = 0; i < masterData.playerCount; i++) sem_post(&semaphores->playerSems[i]);
