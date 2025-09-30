@@ -24,11 +24,7 @@ int main(int argc, char* argv[]) {
     semaphores_t* semaphores;
     openReadShm(strtoul(argv[1], NULL, 10), strtoul(argv[2], NULL, 10), &gameState, &semaphores);
 
-    gameState_t* savedGameState = malloc(sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
-    checkMalloc(savedGameState, "malloc failed for savedGameState", EXIT_FAILURE);
-
     pid_t myPid = getpid();
-
     int myIndex = -1;
     for (int i = 0; i < gameState->playerCount; i++) {
         if (gameState->playerArray[i].pid == myPid) {
@@ -44,12 +40,10 @@ int main(int argc, char* argv[]) {
 
     while (!gameState->playerArray[myIndex].isBlocked && !gameState->finished) {
         sem_wait(&semaphores->playerSems[myIndex]);
-        getGameState(gameState, semaphores, savedGameState);
-        unsigned char direction = getNextMovement(savedGameState, myIndex);
+        unsigned char direction = getNextMovement(gameState, myIndex);
         sendChar(direction);
     }
 
-    free(savedGameState);
     munmap(gameState, sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
     munmap(semaphores, sizeof(semaphores_t));
     return 0;
