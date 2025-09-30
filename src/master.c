@@ -138,6 +138,9 @@ static void freeResources();
 
 int main(int argc, char *argv[]) {
     saveParams(argc, argv);
+ //   char str[] = "./bin/viewINV";
+   // masterData.viewBinary = str;
+    //masterData.viewBinary = 0;
     if (masterData.playerCount < MINPLAYERS) {
         printf("Error: se requieren al menos %d jugadores\n", MINPLAYERS);
         exit(EXIT_FAILURE);
@@ -155,6 +158,7 @@ int main(int argc, char *argv[]) {
         checkPid(view_pid, "Error creando proceso vista", EXIT_FAILURE);
         childsPids[9] = view_pid;
     }
+ //   printf("preprint semaphores\n");
 
     printView(semaphores);
 
@@ -169,6 +173,8 @@ int main(int argc, char *argv[]) {
 
     unsigned char playerChecking = 0;
 
+    printf("prewhile loop, playerCount %d, %s, %d\n", masterData.playerCount, masterData.viewBinary, masterData.viewBinary);
+    //usleep(10000);
     while (!gameState->finished) {
         struct timeval tv = {.tv_sec = 0, .tv_usec = 100000};
         int ready = select(maxfd, &readfds, NULL, NULL, &tv);
@@ -189,9 +195,14 @@ int main(int argc, char *argv[]) {
                 break;
         }
 
+        printf("posswitch\n");
+
         if (gameState->playerArray[playerChecking].isBlocked) {
+            printf("player %d is blocked\n", playerChecking);
             if (++playerChecking >= gameState->playerCount) playerChecking = 0;
-        } else {
+        }
+        else {
+            printf("player %d is not blocked\n", playerChecking);
             // Procesar siguiente movimiento
             sem_wait(&semaphores->masterMutex);
             sem_wait(&semaphores->gameStateMutex);
@@ -209,14 +220,21 @@ int main(int argc, char *argv[]) {
             if (++playerChecking >= gameState->playerCount) playerChecking = 0;
         }
 
+        printf("posifelse preCheckBlockedPlayers\n");
         checkBlockedPlayers(gameState);
+        printf("posifelse postCheckBlockedPlayers\n");
         if (getTimeMs() - masterData.savedTime > masterData.timeout * 1000) finishGame(gameState);
         usleep(masterData.delay * 1000);
+        printf("posUsleep\n");
     }
 
+    printf("preprintview endgame\n");
     printView(semaphores);
+    printf("postprintview \n");
     printEndGame(gameState);
+    printf("postprintendgame \n");
 
+     // Desbloquear a todos los jugadores para que puedan terminar
     for (int i = 0; i < masterData.playerCount; i++) sem_post(&semaphores->playerSems[i]);
 
     struct timespec ts = {.tv_sec = 1, .tv_nsec = 100000};
@@ -386,7 +404,7 @@ static pid_t newProc(const char *binary, char *const argv[]) {
         execvp(binary, argv);
         // aca nunca se llega porque exec no crea un nuevo proceso, sino que
         // reemplaza el actual
-        printf("Error en execvp");
+        printf("Error en execvp inicializando %s\n", binary);
         exit(EXIT_FAILURE);
     }
     return pid;
