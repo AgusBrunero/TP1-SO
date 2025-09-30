@@ -217,6 +217,11 @@ int main(int argc, char *argv[]) {
     printView(semaphores);
     printEndGame(gameState);
 
+    for (int i = 0; i < masterData.playerCount; i++) sem_post(&semaphores->playerSems[i]);
+
+    struct timespec ts = {.tv_sec = 1, .tv_nsec = 100000};
+    nanosleep(&ts, NULL);
+
     int status;
     for (int i = 0; i < masterData.playerCount; i++) {
         if (childsPids[i] == 0) continue;
@@ -250,13 +255,17 @@ int main(int argc, char *argv[]) {
     }
 
     freeResources(gameState, semaphores);
-    printf("Proceso con PID: %d (Master) terminó \n", getpid());
+    printf("Proceso con PID: %d (Master) terminó con estado 0\n", getpid());
 
     return 0;
 }
 
 static void printView(semaphores_t *semaphores) {
-    if (masterData.viewBinary == NULL) return;
+    if (masterData.viewBinary == NULL) {
+        struct timespec ts = {.tv_sec = 0, .tv_nsec = 10000};
+        nanosleep(&ts, NULL);
+        return;
+    }
     sem_post(&semaphores->masterToView);
     sem_wait(&semaphores->viewToMaster);
 }
@@ -394,6 +403,9 @@ static pid_t newPipedProc(const char *binary, int pipe_fd, char *const argv[]) {
         // proceso hijo
         dup2(pipe_fd, STDOUT_FILENO);
         close(pipe_fd);
+        for (int i = 0; i < MAXPLAYERS; i++) {
+            if (pipes[i][0] != -1) close(pipes[i][0]);
+        }
 
         // TODO: CERRAR PIPES EXTRA AQUÍ
 
@@ -484,6 +496,8 @@ static player_t playerFromBin(char *binPath, int intSuffix, unsigned short x, un
     }
 
     pid_t pid = newPipedProc(binPath, pipes[intSuffix][1], argv);
+    close(pipes[intSuffix][1]);
+
     if (pid == -1) {
         fprintf(stderr, "Error creando proceso jugador %s con binario: %s\n", player.name, binPath);
         exit(EXIT_FAILURE);

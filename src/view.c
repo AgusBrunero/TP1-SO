@@ -2,13 +2,13 @@
 #include <locale.h>
 #include <ncurses.h>
 #include <semaphore.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/shm.h>
 #include <unistd.h>
-#include <stdbool.h>
 
 #include "chompChampsUtils.h"
 #include "defs.h"
@@ -24,20 +24,19 @@
 #define PLAYER_CHAR "ඞ"
 
 static void init_colors_ncurses(void);
-static void draw_left_win(WINDOW *left, gameState_t* gameState, const char **ascii_lines, int ascii_count, bool ascii_visible);
-static void draw_right_win(WINDOW *right, gameState_t* gameState);
+static void draw_left_win(WINDOW *left, gameState_t *gameState, const char **ascii_lines, int ascii_count, bool ascii_visible);
+static void draw_right_win(WINDOW *right, gameState_t *gameState);
 static int player_color_pair(int idx);
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
     if (argc < 3) {
         fprintf(stderr, "Uso: %s <shm_id> <shm_size_bytes>", argv[0]);
         return EXIT_FAILURE;
     }
 
-    gameState_t* gameState = NULL;
-    semaphores_t* semaphores = NULL;
-    openReadShm(strtoul(argv[1], NULL, 10), strtoul(argv[2], NULL, 10),
-                &gameState, &semaphores);
+    gameState_t *gameState = NULL;
+    semaphores_t *semaphores = NULL;
+    openReadShm(strtoul(argv[1], NULL, 10), strtoul(argv[2], NULL, 10), &gameState, &semaphores);
 
     setlocale(LC_ALL, "");
 
@@ -62,14 +61,10 @@ int main(int argc, char* argv[]) {
     int last_rows = -1, last_cols = -1;
 
     /* Chomp Champs en ASCII */
-    const char *ascii_lines[] = {
-        "  ___ _                      ___ _                       ",
-        " / __| |_  ___ _ __  _ __   / __| |_  __ _ _ __  _ __ ___",
-        "| (__| ' \\/ _ \\ '  \\| '_ \\ | (__| ' \\/ _` | '  \\| '_ (_-<",
-        " \\___|_||_\\___/_|_|_| .__/  \\___|_||_\\__,_|_|_|_| .__/__/",
-        "                    |_|                         |_|      "
-    };
-    const int ascii_count = sizeof(ascii_lines)/sizeof(ascii_lines[0]);
+    const char *ascii_lines[] = {"  ___ _                      ___ _                       ", " / __| |_  ___ _ __  _ __   / __| |_  __ _ _ __  _ __ ___",
+                                 "| (__| ' \\/ _ \\ '  \\| '_ \\ | (__| ' \\/ _` | '  \\| '_ (_-<",
+                                 " \\___|_||_\\___/_|_|_| .__/  \\___|_||_\\__,_|_|_|_| .__/__/", "                    |_|                         |_|      "};
+    const int ascii_count = sizeof(ascii_lines) / sizeof(ascii_lines[0]);
 
     while (!gameState->finished) {
         sem_wait(&semaphores->masterToView);
@@ -78,7 +73,8 @@ int main(int argc, char* argv[]) {
         getmaxyx(stdscr, rows, cols);
 
         bool size_changed = (rows != last_rows) || (cols != last_cols);
-        last_rows = rows; last_cols = cols;
+        last_rows = rows;
+        last_cols = cols;
 
         if (rows < MIN_LINES_REQUIRED || cols < MIN_COLS_REQUIRED) {
             werase(stdscr);
@@ -102,7 +98,7 @@ int main(int argc, char* argv[]) {
             int l;
             l = snprintf(tmp, sizeof(tmp), "Mapa: %dx%d", gameState->width, gameState->height);
             if (l > right_required_w) right_required_w = l;
-            const char* estado = gameState->finished ? "Finalizado" : "En juego";
+            const char *estado = gameState->finished ? "Finalizado" : "En juego";
             l = snprintf(tmp, sizeof(tmp), "Estado: %s", estado);
             if (l > right_required_w) right_required_w = l;
 
@@ -177,10 +173,18 @@ int main(int argc, char* argv[]) {
         int win_h = rows;
 
         if (left_win == NULL || size_changed) {
-            if (left_win) { delwin(left_win); left_win = NULL; }
+            if (left_win) {
+                delwin(left_win);
+                left_win = NULL;
+            }
             left_win = newwin(win_h, left_w, 0, 0);
-            if (!left_win) { endwin(); fprintf(stderr, "No se pudo crear left_win"); exit(EXIT_FAILURE); }
-            leaveok(left_win, TRUE); syncok(left_win, FALSE);
+            if (!left_win) {
+                endwin();
+                fprintf(stderr, "No se pudo crear left_win");
+                exit(EXIT_FAILURE);
+            }
+            leaveok(left_win, TRUE);
+            syncok(left_win, FALSE);
         } else {
             mvwin(left_win, 0, 0);
             wresize(left_win, win_h, left_w);
@@ -189,17 +193,28 @@ int main(int argc, char* argv[]) {
 
         if (right_visible) {
             if (right_win == NULL || size_changed) {
-                if (right_win) { delwin(right_win); right_win = NULL; }
+                if (right_win) {
+                    delwin(right_win);
+                    right_win = NULL;
+                }
                 right_win = newwin(win_h, right_w, 0, left_w + sep);
-                if (!right_win) { endwin(); fprintf(stderr, "No se pudo crear right_win"); exit(EXIT_FAILURE); }
-                leaveok(right_win, TRUE); syncok(right_win, FALSE);
+                if (!right_win) {
+                    endwin();
+                    fprintf(stderr, "No se pudo crear right_win");
+                    exit(EXIT_FAILURE);
+                }
+                leaveok(right_win, TRUE);
+                syncok(right_win, FALSE);
             } else {
                 mvwin(right_win, 0, left_w + sep);
                 wresize(right_win, win_h, right_w);
                 werase(right_win);
             }
         } else {
-            if (right_win) { delwin(right_win); right_win = NULL; }
+            if (right_win) {
+                delwin(right_win);
+                right_win = NULL;
+            }
         }
 
         draw_left_win(left_win, gameState, ascii_lines, ascii_count, ascii_visible);
@@ -214,29 +229,35 @@ int main(int argc, char* argv[]) {
         napms(10);
     }
 
-sem_wait(&semaphores->masterToView);
-if (left_win) werase(left_win);
-if (right_win) werase(right_win);
+    sem_wait(&semaphores->masterToView);
+    if (left_win) werase(left_win);
+    if (right_win) werase(right_win);
 
-bool ascii_visible_final = true;
-int rows = getmaxy(stdscr);
-int ascii_height = ascii_count + 1 + TOP_PADDING;
+    bool ascii_visible_final = true;
+    int rows = getmaxy(stdscr);
+    int ascii_height = ascii_count + 1 + TOP_PADDING;
 
-if (rows - ascii_height < (int)gameState->height) {
-    ascii_visible_final = false;
-}
+    if (rows - ascii_height < (int)gameState->height) {
+        ascii_visible_final = false;
+    }
 
-draw_left_win(left_win ? left_win : stdscr, gameState, ascii_lines, ascii_count, ascii_visible_final);
-draw_right_win(right_win ? right_win : stdscr, gameState);
+    draw_left_win(left_win ? left_win : stdscr, gameState, ascii_lines, ascii_count, ascii_visible_final);
+    draw_right_win(right_win ? right_win : stdscr, gameState);
 
-if (left_win) wnoutrefresh(left_win);
-if (right_win) wnoutrefresh(right_win);
-doupdate();
-sleep(3);
-sem_post(&semaphores->viewToMaster);
+    if (left_win) wnoutrefresh(left_win);
+    if (right_win) wnoutrefresh(right_win);
+    doupdate();
+    sleep(3);
+    sem_post(&semaphores->viewToMaster);
 
-    if (left_win) { delwin(left_win); left_win = NULL; }
-    if (right_win) { delwin(right_win); right_win = NULL; }
+    if (left_win) {
+        delwin(left_win);
+        left_win = NULL;
+    }
+    if (right_win) {
+        delwin(right_win);
+        right_win = NULL;
+    }
 
     curs_set(1);
     endwin();
@@ -252,9 +273,10 @@ sem_post(&semaphores->viewToMaster);
     return 0;
 }
 
-static void draw_left_win(WINDOW *left, gameState_t* gameState, const char **ascii_lines, int ascii_count, bool ascii_visible) {
+static void draw_left_win(WINDOW *left, gameState_t *gameState, const char **ascii_lines, int ascii_count, bool ascii_visible) {
     if (!left || !gameState) return;
-    int win_h, win_w; getmaxyx(left, win_h, win_w);
+    int win_h, win_w;
+    getmaxyx(left, win_h, win_w);
 
     werase(left);
 
@@ -284,9 +306,14 @@ static void draw_left_win(WINDOW *left, gameState_t* gameState, const char **asc
         for (int j = 0; j < gameState->width && j * CELL_W < board_w; j++) {
             int x = board_x + j * CELL_W;
             int y = board_start_y + i;
-            bool isPlayer = false; int playerIdx = -1;
+            bool isPlayer = false;
+            int playerIdx = -1;
             for (int p = 0; p < playerCount; p++) {
-                if (gameState->playerArray[p].x == j && gameState->playerArray[p].y == i) { isPlayer = true; playerIdx = p; break; }
+                if (gameState->playerArray[p].x == j && gameState->playerArray[p].y == i) {
+                    isPlayer = true;
+                    playerIdx = p;
+                    break;
+                }
             }
             if (isPlayer) {
                 int pair = player_color_pair(playerIdx);
@@ -309,13 +336,17 @@ static void draw_left_win(WINDOW *left, gameState_t* gameState, const char **asc
     }
 }
 
-static void draw_right_win(WINDOW *right, gameState_t* gameState) {
+static void draw_right_win(WINDOW *right, gameState_t *gameState) {
     if (!right || !gameState) return;
-    int win_h, win_w; getmaxyx(right, win_h, win_w);
+    int win_h, win_w;
+    getmaxyx(right, win_h, win_w);
     werase(right);
 
-    char mapbuf[64]; snprintf(mapbuf, sizeof(mapbuf), "Mapa: %dx%d", gameState->width, gameState->height);
-    char statebuf[64]; const char* estado = gameState->finished ? "Finalizado" : "En juego"; snprintf(statebuf, sizeof(statebuf), "Estado: %s", estado);
+    char mapbuf[64];
+    snprintf(mapbuf, sizeof(mapbuf), "Mapa: %dx%d", gameState->width, gameState->height);
+    char statebuf[64];
+    const char *estado = gameState->finished ? "Finalizado" : "En juego";
+    snprintf(statebuf, sizeof(statebuf), "Estado: %s", estado);
     mvwprintw(right, 0, 1, "%s", mapbuf);
     mvwprintw(right, 1, 1, "%s", statebuf);
 
@@ -351,15 +382,15 @@ static void draw_right_win(WINDOW *right, gameState_t* gameState) {
 }
 
 static void init_colors_ncurses(void) {
-    init_pair(1, COLOR_RED,    -1);
-    init_pair(2, COLOR_GREEN,  -1);
+    init_pair(1, COLOR_RED, -1);
+    init_pair(2, COLOR_GREEN, -1);
     init_pair(3, COLOR_YELLOW, -1);
-    init_pair(4, COLOR_BLUE,   -1);
-    init_pair(5, COLOR_MAGENTA,-1);
-    init_pair(6, COLOR_CYAN,   -1);
-    init_pair(7, COLOR_WHITE,  -1);
+    init_pair(4, COLOR_BLUE, -1);
+    init_pair(5, COLOR_MAGENTA, -1);
+    init_pair(6, COLOR_CYAN, -1);
+    init_pair(7, COLOR_WHITE, -1);
     init_pair(8, COLOR_YELLOW, -1);
-    init_pair(9, COLOR_MAGENTA,-1);
+    init_pair(9, COLOR_MAGENTA, -1);
 }
 
 static int player_color_pair(int idx) {

@@ -42,14 +42,14 @@ int main(int argc, char* argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    while (!gameState->playerArray[myIndex].isBlocked) {
+    while (!gameState->playerArray[myIndex].isBlocked && !gameState->finished) {
         sem_wait(&semaphores->playerSems[myIndex]);
         getGameState(gameState, semaphores, savedGameState);
         unsigned char direction = getNextMovement(savedGameState, myIndex);
         sendChar(direction);
     }
-    free(savedGameState);
 
+    free(savedGameState);
     munmap(gameState, sizeof(gameState_t) + gameState->width * gameState->height * sizeof(int));
     munmap(semaphores, sizeof(semaphores_t));
     return 0;
