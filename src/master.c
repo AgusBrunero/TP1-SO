@@ -138,9 +138,9 @@ static void freeResources();
 
 int main(int argc, char *argv[]) {
     saveParams(argc, argv);
- //   char str[] = "./bin/viewINV";
-   // masterData.viewBinary = str;
-    //masterData.viewBinary = 0;
+    //   char str[] = "./bin/viewINV";
+    // masterData.viewBinary = str;
+    // masterData.viewBinary = 0;
     if (masterData.playerCount < MINPLAYERS) {
         printf("Error: se requieren al menos %d jugadores\n", MINPLAYERS);
         exit(EXIT_FAILURE);
@@ -158,7 +158,7 @@ int main(int argc, char *argv[]) {
         checkPid(view_pid, "Error creando proceso vista", EXIT_FAILURE);
         childsPids[9] = view_pid;
     }
- //   printf("preprint semaphores\n");
+    //   printf("preprint semaphores\n");
 
     printView(semaphores);
 
@@ -201,19 +201,20 @@ int main(int argc, char *argv[]) {
 
         if (gameState->playerArray[playerChecking].isBlocked) {
             if (++playerChecking >= gameState->playerCount) playerChecking = 0;
-        }
-        else {
+        } else {
             // Procesar siguiente movimiento
             sem_wait(&semaphores->masterMutex);
             sem_wait(&semaphores->gameStateMutex);
             unsigned char nextMove = -1;
-            read(pipes[playerChecking][0], &nextMove, 1);
+            int bytesRead = read(pipes[playerChecking][0], &nextMove, 1);
             sem_post(&semaphores->playerSems[playerChecking]);
-            if (nextMove == EOF) {
-                gameState->playerArray[playerChecking].isBlocked = true;
-            } else {
-                updatePlayerPosition(gameState, &gameState->playerArray[playerChecking], playerChecking, nextMove);
-                printView(semaphores);
+            if (bytesRead > 0) {
+                if (nextMove == EOF) {
+                    gameState->playerArray[playerChecking].isBlocked = true;
+                } else {
+                    updatePlayerPosition(gameState, &gameState->playerArray[playerChecking], playerChecking, nextMove);
+                    printView(semaphores);
+                }
             }
             sem_post(&semaphores->gameStateMutex);
             sem_post(&semaphores->masterMutex);
@@ -228,7 +229,7 @@ int main(int argc, char *argv[]) {
     printView(semaphores);
     printEndGame(gameState);
 
-     // Desbloquear a todos los jugadores para que puedan terminar
+    // Desbloquear a todos los jugadores para que puedan terminar
     for (int i = 0; i < masterData.playerCount; i++) sem_post(&semaphores->playerSems[i]);
 
     struct timespec ts = {.tv_sec = 1, .tv_nsec = 100000};
@@ -419,10 +420,7 @@ static pid_t newPipedProc(const char *binary, int pipe_fd, char *const argv[]) {
             if (pipes[i][0] != -1) close(pipes[i][0]);
         }
 
-        // TODO: CERRAR PIPES EXTRA AQUÍ
-
         execvp(binary, argv);
-        // si se llega aquí, exec falló.
         printf("Error en execvp");
         exit(EXIT_FAILURE);
     }
