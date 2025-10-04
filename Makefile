@@ -50,7 +50,7 @@ docker-run:
 	docker run -it --rm -v $(PWD):/root/workspace agodio/itba-so-multi-platform:3.0 /bin/bash -c "cd /root/workspace && exec bash"
 
 docker-setup:
-	docker run -it --rm -v $(PWD):/root/workspace agodio/itba-so-multi-platform:3.0 /bin/bash -c "cd /root/workspace && make setup && exec bash"
+	docker run -it --rm -v $(PWD):/root/workspace agodio/itba-so-multi-platform:3.0 /bin/bash -c "cd /root/workspace && make setup"
 
 setup: 
 	apt install -y locales libncursesw5-dev && \
@@ -58,6 +58,8 @@ setup:
 	locale-gen en_US.UTF-8 && \
 	update-locale LANG=en_US.UTF-8 && \
 	echo 'export LANG=en_US.UTF-8' >> ~/.bashrc && \
-	echo 'export LC_ALL=en_US.UTF-8' >> ~/.bashrc
+	echo 'export LC_ALL=en_US.UTF-8' >> ~/.bashrc && \
+	exec bash
+
 
 .PHONY: all clean setup memcheck runtest docker-pull docker-run docker-setup

@@ -18,7 +18,7 @@ Se utiliza la imagen `agodio/itba-so-multi-platform:3.0`. Para facilitar su uso 
 
 **Abrir una shell en el contenedor:**
 
-```make docker-shell```
+```make docker-run```
 
 **Abrir una shell y configurar el entorno en el contenedor (instala ncurses y locales UTF-8 para la vista):**
 
