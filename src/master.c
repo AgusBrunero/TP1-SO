@@ -233,13 +233,13 @@ int main(int argc, char *argv[]) {
     printView(semaphores);
     printEndGame(gameState);
 
+    int status;
     // Desbloquear a todos los jugadores para que puedan terminar
     for (int i = 0; i < masterData.playerCount; i++) sem_post(&semaphores->playerSems[i]);
 
-    struct timespec ts = {.tv_sec = 1, .tv_nsec = 100000};
+    struct timespec ts = {.tv_sec = 0, .tv_nsec = 100000};
     nanosleep(&ts, NULL);
 
-    int status;
     for (int i = 0; i < masterData.playerCount; i++) {
         if (childsPids[i] == 0) continue;
 
@@ -256,6 +256,7 @@ int main(int argc, char *argv[]) {
             printf("Proceso con PID: %d (Player %d) terminado por timeout\n", childsPids[i], i);
         }
     }
+
     if (masterData.viewBinary != NULL) {
         if (waitpid(childsPids[9], &status, WNOHANG) > 0) {
             if (WIFEXITED(status)) {

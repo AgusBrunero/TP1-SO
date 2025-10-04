@@ -224,12 +224,10 @@ int main(int argc, char *argv[]) {
         if (right_visible && right_win) wnoutrefresh(right_win);
 
         doupdate();
-
+        if (gameState->finished) break;
         sem_post(&semaphores->viewToMaster);
         napms(10);
     }
-
-    sem_wait(&semaphores->masterToView);
     if (left_win) werase(left_win);
     if (right_win) werase(right_win);
 
@@ -247,8 +245,7 @@ int main(int argc, char *argv[]) {
     if (left_win) wnoutrefresh(left_win);
     if (right_win) wnoutrefresh(right_win);
     doupdate();
-    sleep(3);
-    sem_post(&semaphores->viewToMaster);
+    sleep(2);
 
     if (left_win) {
         delwin(left_win);
@@ -261,11 +258,13 @@ int main(int argc, char *argv[]) {
 
     curs_set(1);
     endwin();
+    sem_post(&semaphores->viewToMaster);
 
     if (gameState != NULL) {
         size_t gameStateSize = sizeof(gameState_t) + (size_t)gameState->width * gameState->height * sizeof(int);
         if (munmap(gameState, gameStateSize) == -1) perror("view: munmap(gameState) failed");
     }
+
     if (semaphores != NULL) {
         if (munmap(semaphores, sizeof(semaphores_t)) == -1) perror("view: munmap(semaphores) failed");
     }
