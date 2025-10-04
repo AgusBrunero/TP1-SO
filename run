@@ -1,5 +1,0 @@
-get opt
-/bin/true
-/bin/false
-
-valgrind --leak-check=full --show-leak-kinds=all -v ./bin/master.....
