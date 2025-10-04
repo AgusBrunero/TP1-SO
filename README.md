@@ -24,28 +24,26 @@ Se utiliza la imagen `agodio/itba-so-multi-platform:3.0`. Para facilitar su uso 
 Nota: Las configuraciones del sistema no persisten entre ejecuciones del contenedor. Ejecutar make docker-setup cada vez que se inicie un nuevo contenedor.
 
 ### Compilar:
-**Instalar dependencias (solo si no se usa Docker):**
-```make setup```
+**Instalar dependencias (solo si no se usa Docker):**  
+```make setup```  
 
-**Compilar el proyecto:**
-```make```
+**Compilar el proyecto:**  
+```make```  
 
-**Limpiar archivos compilados:**
-```make clean```
+**Limpiar archivos compilados:**  
+```make clean```  
 
-**Ejecutar prueba con 2 jugadores y vista:**
-```make runtest```
+**Ejecutar prueba con 2 jugadores y vista:**  
+```make runtest```  
 
-### Ejecución
+### Ejecución  
+```./bin/master -w <COLUMNAS> -h <FILAS> -d <DELAY> -s <TIMEOUT> -s <SEED> -v ./bin/view -p ./bin/player ...```  
 
-```./bin/master -w <COLUMNAS> -h <FILAS> -d <DELAY> -s <TIMEOUT> -s <SEED> -v ./bin/view -p ./bin/player ...```
-
-**Parámetros:**
-
--w: Ancho del tablero (default y mínimo: 10)
--h: Alto del tablero (default y mínimo: 10)
--d: Delay entre turnos en ms (default: 200)
--t: Timeout por turno en s (default: 10)
--s: Seed para generación aleatoria (default: time(NULL))
--v: Path al binario de la vista (opcional)
--p: Ejecutables de los jugadores (mínimo 1 máximo 9)
+**Parámetros:**  
+```-w:``` Ancho del tablero (default y mínimo: 10)  
+```-h:``` Alto del tablero (default y mínimo: 10)  
+```-d:``` Delay entre turnos en ms (default: 200)  
+```-t:``` Timeout por turno en s (default: 10)  
+```-s:``` Seed para generación aleatoria (default: time(NULL))  
+```-v:``` Path al binario de la vista (opcional)  
+```-p:``` Ejecutables de los jugadores (mínimo 1 máximo 9)  
