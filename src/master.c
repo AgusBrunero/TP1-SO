@@ -142,7 +142,11 @@ int main(int argc, char *argv[]) {
     // masterData.viewBinary = str;
     // masterData.viewBinary = 0;
     if (masterData.playerCount < MINPLAYERS) {
-        printf("Error: se requieren al menos %d jugadores\n", MINPLAYERS);
+        if (MINPLAYERS == 1) {
+            printf("Error: se requiere al menos %d jugador\n", MINPLAYERS);
+        } else {
+            printf("Error: se requieren al menos %d jugadores\n", MINPLAYERS);
+        }
         exit(EXIT_FAILURE);
     }
     createShms(masterData.width, masterData.height);
