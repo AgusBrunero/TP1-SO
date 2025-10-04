@@ -237,8 +237,7 @@ int main(int argc, char *argv[]) {
     // Desbloquear a todos los jugadores para que puedan terminar
     for (int i = 0; i < masterData.playerCount; i++) sem_post(&semaphores->playerSems[i]);
 
-    struct timespec ts = {.tv_sec = 0, .tv_nsec = 100000};
-    nanosleep(&ts, NULL);
+    sleep(1);
 
     for (int i = 0; i < masterData.playerCount; i++) {
         if (childsPids[i] == 0) continue;
