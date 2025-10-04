@@ -1,12 +1,11 @@
 CC = gcc
-CFLAGS = -g -Wall -std=c99 -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE
+CFLAGS = -Wall -std=c99 -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE
 LDFLAGS = -pthread -lrt
 NCURSES_LIBS = -lncursesw
 SRC_DIR = src
 BIN_DIR = bin
 OBJ_DIR = obj
 PLAYERS_SRC := $(wildcard src/playersIA/*.c)
-PLAYERS_BIN := $(patsubst src/playersIA/%.c, $(BIN_DIR)/%, $(PLAYERS_SRC))
 
 # Crear directorios necesarios
 $(shell mkdir -p $(BIN_DIR) $(OBJ_DIR))
@@ -16,7 +15,6 @@ UTILS_OBJ = $(OBJ_DIR)/chompChampsUtils.o
 
 all: $(BIN_DIR)/master $(BIN_DIR)/player $(BIN_DIR)/view
 	chmod +x $(BIN_DIR)/master $(BIN_DIR)/player $(BIN_DIR)/view
-	@echo "\n\033[33mPara correr el programa hacer:\n./run <FILAS> <COLUMNAS> <DELAY> <TIMEOUT> <SEED>\033[0m"
 
 $(UTILS_OBJ): $(SRC_DIR)/chompChampsUtils.c $(SRC_DIR)/chompChampsUtils.h $(SRC_DIR)/defs.h
 	$(CC) $(CFLAGS) -c -o $@ $(SRC_DIR)/chompChampsUtils.c
@@ -36,11 +34,30 @@ memcheck: all
 			 --track-origins=yes \
 			 --verbose \
 			 --log-file=valgrind-out.txt \
-			 ./run 20 20 20 40 123
+			 ./bin/master -p ./bin/player -v ./bin/view -d 10
 
 clean:
 	rm -f $(BIN_DIR)/master $(BIN_DIR)/player $(BIN_DIR)/view
 	rm -f $(OBJ_DIR)/*.o
 
+runtest: all
+	./$(BIN_DIR)/master -p ./$(BIN_DIR)/player ./$(BIN_DIR)/player -v ./$(BIN_DIR)/view -d 50
 
-.PHONY: all clean
+docker-pull:
+	docker pull agodio/itba-so-multi-platform:3.0
+
+docker-run:
+	docker run -it --rm -v $(PWD):/root/workspace agodio/itba-so-multi-platform:3.0 /bin/bash -c "cd /root/workspace && exec bash"
+
+docker-setup:
+	docker run -it --rm -v $(PWD):/root/workspace agodio/itba-so-multi-platform:3.0 /bin/bash -c "cd /root/workspace && make setup && exec bash"
+
+setup: 
+	apt install -y locales libncursesw5-dev
+	echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen	
+	locale-gen en_US.UTF-8
+	update-locale LANG=en_US.UTF-8
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+
+.PHONY: all clean setup memcheck runtest docker-pull docker-run docker-setup
